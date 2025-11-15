@@ -21,12 +21,13 @@ impl ToString for Op {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
 pub enum Expr {
     Literal(i64),
     Add1(Box<Expr>),
     Let(String, Box<Expr>, Box<Expr>),
     Id(String),
+    If(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 impl Into<Expr> for i64 {
@@ -50,6 +51,18 @@ impl Expr {
         body: V,
     ) -> Expr {
         Expr::Let(id.into(), Box::new(expr.into()), Box::new(body.into()))
+    }
+
+    pub fn conditional<T: Into<Expr>, U: Into<Expr>, V: Into<Expr>>(
+        cond: T,
+        body: U,
+        branch: V,
+    ) -> Expr {
+        Expr::If(
+            Box::new(cond.into()),
+            Box::new(body.into()),
+            Box::new(branch.into()),
+        )
     }
 
     fn to_asm(&self, env: &HashMap<String, usize>) -> Vec<Instr> {
@@ -77,6 +90,9 @@ impl Expr {
                     Operand::local_variable(*env.get(id).unwrap()),
                     Reg::RAX,
                 )]
+            }
+            Expr::If(cond, body, branch) => {
+                todo!()
             }
         }
     }
@@ -115,17 +131,29 @@ impl Expr {
         }
     }
 
-    pub fn interp(&self, env: HashMap<String, Expr>) -> i64 {
+    pub fn eval(&self, env: &HashMap<String, Expr>) -> i64 {
         match self {
             Expr::Literal(val) => *val,
-            Expr::Add1(expr) => 1 + expr.interp(env),
+            Expr::Add1(expr) => 1 + expr.eval(env),
             Expr::Let(id, expr, body) => {
                 let mut env = env.clone();
                 env.insert(id.clone(), expr.subst(&env));
 
-                body.interp(env)
+                body.eval(&env)
             }
-            Expr::Id(id) => env.get(id).unwrap().clone().interp(env),
+            Expr::Id(id) => env.get(id).unwrap().clone().eval(env),
+            Expr::If(cond, body, branch) => {
+                if cond.eval(env) != 0 {
+                    body.eval(env)
+                } else {
+                    branch.eval(env)
+                }
+            }
         }
+    }
+
+    pub fn interp(&self) -> i64 {
+        let env = HashMap::new();
+        self.eval(&env)
     }
 }

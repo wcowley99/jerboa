@@ -1,0 +1,13 @@
+<expr> ::= 
+         | number
+         | id
+         | "let" id "=" <expr> "in" <expr>
+         | "inc" "(" <expr> ")"
+
+FIRST = {
+  expr: {number, id, "let", "inc"}
+}
+
+FOLLOW = {
+  expr: {"in", ")", $},
+}

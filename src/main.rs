@@ -3,10 +3,14 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::ast::Expr;
+use crate::{
+    ast::Expr,
+    parser::{lex, parse},
+};
 
 mod ast;
 mod instr;
+mod parser;
 
 fn main() {
     // let ast = Expr::Add1(Box::new(Expr::Add1(Box::new(Expr::Literal(5)))));
@@ -17,7 +21,10 @@ fn main() {
         Expr::add1(Expr::id("x")),
     );
 
-    println!("{}", ast.compile(HashMap::new()))
+    let source = "inc(inc(55))";
+    println!("{}", parse(lex(source)).compile(HashMap::new()));
+
+    // println!("{}", ast.compile(HashMap::new()))
 
     // let ps_asm = Command::new("echo")
     //     .arg(ast.compile())
