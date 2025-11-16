@@ -103,25 +103,25 @@ impl Expr {
         \n\
         _start:"
             .to_string();
-        let program = [
-            self.to_asm(&env),
-            vec![
-                Instr::mov(Reg::RAX, Reg::RDI),
-                Instr::mov(60, Reg::RAX),
-                Instr::Syscall,
-            ],
-        ]
-        .concat();
+        let envoi = vec![
+            Instr::mov(Reg::RAX, Reg::RDI),
+            Instr::mov(60, Reg::RAX),
+            Instr::Syscall,
+        ];
+        let program = [self.to_asm(&env), envoi].concat();
 
-        [
-            preamble,
-            program
-                .iter()
-                .map(|n| n.to_string())
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ]
-        .join("\n")
+        format!(
+            "{}\n",
+            [
+                preamble,
+                program
+                    .iter()
+                    .map(|n| n.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ]
+            .join("\n")
+        )
     }
 
     pub fn subst(&self, env: &HashMap<String, Expr>) -> Expr {

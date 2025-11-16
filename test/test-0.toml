@@ -1,0 +1,10 @@
+name = "simple let binding"
+
+[input]
+program = """
+let x = 5 in x
+"""
+
+[expected]
+exit_code = 5
+stdout = ""

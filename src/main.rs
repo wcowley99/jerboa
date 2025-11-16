@@ -1,5 +1,7 @@
 use std::{
     collections::HashMap,
+    env,
+    io::{self, Read, Write},
     process::{Command, Stdio},
 };
 
@@ -12,41 +14,26 @@ mod ast;
 mod instr;
 mod parser;
 
-fn main() {
-    // let ast = Expr::Add1(Box::new(Expr::Add1(Box::new(Expr::Literal(5)))));
-    let ast = Expr::let_binding("x", 5, Expr::add1(Expr::add1(Expr::id("x"))));
-    let ast = Expr::let_binding(
-        "x",
-        Expr::let_binding("x", 5, Expr::add1(Expr::id("x"))),
-        Expr::add1(Expr::id("x")),
-    );
+fn main() -> io::Result<()> {
+    let mut buffer = String::new();
+    io::stdin().read_to_string(&mut buffer)?;
 
-    let source = "inc(inc(55))";
-    println!("{}", parse(lex(source)).compile(HashMap::new()));
+    let asm = parse(lex(buffer)).compile(HashMap::new());
 
-    // println!("{}", ast.compile(HashMap::new()))
+    let objfile = "tmp.o";
 
-    // let ps_asm = Command::new("echo")
-    //     .arg(ast.compile())
-    //     .stdout(Stdio::piped())
-    //     .spawn()
-    //     .unwrap();
-    //
-    // let mut ps_obj = Command::new("as")
-    //     .stdin(Stdio::from(ps_asm.stdout.unwrap()))
-    //     .arg("-o")
-    //     .arg("tmp.o")
-    //     .spawn()
-    //     .unwrap();
-    //
-    // ps_obj.wait().unwrap();
-    //
-    // let mut ld = Command::new("ld")
-    //     .arg("tmp.o")
-    //     .arg("-o")
-    //     .arg("tmp")
-    //     .spawn()
-    //     .unwrap();
-    //
-    // ld.wait().unwrap();
+    Command::new("as")
+        .args(["-o", objfile])
+        .stdin(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(asm.as_bytes())?;
+            child.wait_with_output()
+        })?;
+
+    Command::new("ld").args([objfile, "-o", "a.out"]).output()?;
+
+    Command::new("rm").arg(objfile).output()?;
+
+    Ok(())
 }
