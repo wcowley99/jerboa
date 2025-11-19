@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use crate::ast::Op;
 
 #[derive(Debug, Copy, Clone)]
@@ -101,18 +103,26 @@ impl Operand {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum Instr {
     Mov(Operand, Operand),
     Add(Operand, Operand),
+    Cmp(Operand, Operand),
+    Je(String),
+    Jmp(String),
+    Label(String),
     Syscall,
 }
 
 impl ToString for Instr {
     fn to_string(&self) -> String {
-        match *self {
+        match self {
             Instr::Mov(s, d) => format!("mov {}, {}", s.to_string(), d.to_string()),
             Instr::Add(s, d) => format!("add {}, {}", s.to_string(), d.to_string()),
+            Instr::Cmp(s, d) => format!("cmp {}, {}", s.to_string(), d.to_string()),
+            Instr::Je(s) => format!("je {}", s),
+            Instr::Jmp(s) => format!("jmp {}", s),
+            Instr::Label(s) => format!("{}:", s),
             Instr::Syscall => "syscall".to_string(),
         }
     }
@@ -125,5 +135,21 @@ impl Instr {
 
     pub fn add<S: Into<Operand>, D: Into<Operand>>(s: S, d: D) -> Instr {
         Instr::Add(s.into(), d.into())
+    }
+
+    pub fn cmp<S: Into<Operand>, D: Into<Operand>>(s: S, d: D) -> Instr {
+        Instr::Cmp(s.into(), d.into())
+    }
+
+    pub fn je<S: Into<String>>(s: S) -> Instr {
+        Instr::Je(s.into())
+    }
+
+    pub fn jmp<S: Into<String>>(s: S) -> Instr {
+        Instr::Jmp(s.into())
+    }
+
+    pub fn label<S: Into<String>>(s: S) -> Instr {
+        Instr::Label(s.into())
     }
 }

@@ -14,11 +14,19 @@ mod ast;
 mod instr;
 mod parser;
 
+fn compile<S: Into<String>>(input: S) -> String {
+    let lexemes = lex(input);
+    let exprs = parse(lexemes);
+    let compiled = exprs.compile(HashMap::new());
+
+    compiled
+}
+
 fn main() -> io::Result<()> {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer)?;
 
-    let asm = parse(lex(buffer)).compile(HashMap::new());
+    let asm = compile(buffer);
 
     let objfile = "tmp.o";
 

@@ -3,11 +3,4 @@
          | id
          | "let" id "=" <expr> "in" <expr>
          | "inc" "(" <expr> ")"
-
-FIRST = {
-  expr: {number, id, "let", "inc"}
-}
-
-FOLLOW = {
-  expr: {"in", ")", $},
-}
+         | "if" <expr> "then" <expr> "else" <expr>

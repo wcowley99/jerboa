@@ -111,7 +111,6 @@ pub fn lex<S: Into<String>>(input: S) -> Vec<Lexeme> {
                 } else if c.is_alphabetic() || *c == '_' {
                     tokens.push(next_identifier(&mut chars));
                 } else {
-                    println!("what is this: {}", c);
                     _ = chars.next()
                 }
             }
@@ -255,6 +254,23 @@ mod tests {
     }
 
     #[test]
+    fn lexer_if_test() {
+        println!("HERE!!!");
+        let input = "if 10 then 0 else 1";
+        assert_eq!(
+            lex(input),
+            vec![
+                Lexeme::If,
+                Lexeme::Num(10),
+                Lexeme::Then,
+                Lexeme::Num(0),
+                Lexeme::Else,
+                Lexeme::Num(1)
+            ]
+        );
+    }
+
+    #[test]
     fn parser_basic_test() {
         let input = "inc(512)";
         assert_eq!(parse(lex(input)), Expr::add1(Expr::Literal(512)));
@@ -270,6 +286,12 @@ mod tests {
     }
 
     #[test]
+    fn parser_if_test() {
+        let input = "if 10 then 0 else 1";
+        assert_eq!(parse(lex(input)), Expr::conditional(10, 0, 1));
+    }
+
+    #[test]
     fn source_to_interp1() {
         let input = "inc(inc(12))";
         assert_eq!(parse(lex(input)).interp(), 14);
@@ -280,7 +302,6 @@ mod tests {
         let input = "let x = 5 in inc(x)";
         assert_eq!(parse(lex(input)).interp(), 6);
     }
-
 
     #[test]
     fn source_to_interp3() {

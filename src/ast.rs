@@ -91,9 +91,15 @@ impl Expr {
                     Reg::RAX,
                 )]
             }
-            Expr::If(cond, body, branch) => {
-                todo!()
-            }
+            Expr::If(cond, body, branch) => [
+                cond.to_asm(env),
+                vec![Instr::cmp(0, Reg::RAX), Instr::je("if_false")],
+                body.to_asm(env),
+                vec![Instr::jmp("done"), Instr::label("if_false")],
+                branch.to_asm(env),
+                vec![Instr::label("done")],
+            ]
+            .concat(),
         }
     }
 
