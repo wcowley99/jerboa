@@ -33,23 +33,31 @@ enum Action {
     ShiftTo(State),
     ShiftSame,
     ReduceTo(State),
+    Reduce,
     Error,
+    Accept,
 }
 
-fn next_action(state: Option<State>, token: &Lexeme) -> Action {
+fn next_action(state: Option<&State>, token: &Option<Lexeme>) -> Action {
+    use Lexeme::*;
+    use State::*;
+
     match (state, token) {
-        (None, Lexeme::Num(_)) => Action::ShiftPush(State::MkNum),
+        (None, Some(Num(_))) => Action::ShiftPush(MkNum),
 
-        (Some(State::MkAdd) | Some(State::MkMul), Lexeme::Num(_)) => Action::ShiftSame,
+        (Some(MkAdd) | Some(State::MkMul), Some(Num(_))) => Action::ShiftSame,
 
-        (Some(State::MkNum), Lexeme::Plus) => Action::ShiftTo(State::MkAdd),
-        (Some(State::MkAdd) | Some(State::MkMul), Lexeme::Plus) => Action::ReduceTo(State::MkAdd),
+        (Some(MkNum), Some(Plus)) => Action::ShiftTo(MkAdd),
+        (Some(MkAdd) | Some(State::MkMul), Some(Plus)) => Action::ReduceTo(MkAdd),
 
-        (Some(State::MkNum), Lexeme::Star) => Action::ShiftTo(State::MkMul),
-        (Some(State::MkAdd), Lexeme::Star) => Action::ShiftPush(State::MkMul),
-        (Some(State::MkMul), Lexeme::Star) => Action::ReduceTo(State::MkMul),
+        (Some(MkNum), Some(Star)) => Action::ShiftTo(MkMul),
+        (Some(MkAdd), Some(Star)) => Action::ShiftPush(MkMul),
+        (Some(MkMul), Some(Star)) => Action::ReduceTo(MkMul),
 
-        (None, Lexeme::Plus | Lexeme::Star) => Action::Error,
+        (Some(_), None) => Action::Reduce,
+        (None, None) => Action::Accept,
+
+        (None, Some(Plus) | Some(Star)) => Action::Error,
         _ => Action::Error,
     }
 }
@@ -107,47 +115,48 @@ impl ExprPool {
         let mut terms = Vec::new();
         let mut states = Vec::new();
 
-        while let Some(token) = lex.next() {
-            match (states.last(), &token) {
-                (None, Lexeme::Num(n)) => {
-                    terms.push(Expr::Num(*n));
-                    states.push(State::MkNum);
+        loop {
+            let token = lex.next();
+            match next_action(states.last(), &token) {
+                Action::ShiftPush(s) => {
+                    if let Some(Lexeme::Num(n)) = token {
+                        terms.push(Expr::Num(n));
+                    }
+
+                    states.push(s);
                 }
-                (Some(State::MkAdd), Lexeme::Num(n)) => terms.push(Expr::Num(*n)),
-                (Some(State::MkMul), Lexeme::Num(n)) => terms.push(Expr::Num(*n)),
-                (Some(State::MkNum), Lexeme::Plus) => {
-                    states.pop();
-                    states.push(State::MkAdd);
+                Action::ShiftTo(s) => {
+                    if let Some(Lexeme::Num(n)) = token {
+                        terms.push(Expr::Num(n));
+                    }
+
+                    if let Some(last) = states.last_mut() {
+                        *last = s;
+                    }
                 }
-                (Some(State::MkAdd), Lexeme::Plus) | (Some(State::MkMul), Lexeme::Plus) => {
+                Action::ShiftSame => {
+                    if let Some(Lexeme::Num(n)) = token {
+                        terms.push(Expr::Num(n));
+                    }
+                }
+                Action::ReduceTo(s) => {
                     self.reduce(&mut terms, &mut states)?;
-                    states.push(State::MkAdd);
+
+                    states.push(s);
                 }
-                (Some(State::MkNum), Lexeme::Star) => {
-                    states.pop();
-                    states.push(State::MkMul);
-                }
-                (Some(State::MkAdd), Lexeme::Star) => states.push(State::MkMul),
-                (Some(State::MkMul), Lexeme::Star) => {
+                Action::Reduce => {
                     self.reduce(&mut terms, &mut states)?;
-                    states.push(State::MkMul);
                 }
-                (None, Lexeme::Plus) | (None, Lexeme::Star) => {
-                    return Err(format!("Unexpected token {:?}", token));
+                Action::Accept => {
+                    let expr = self.add(terms.pop().unwrap());
+                    if !terms.is_empty() {
+                        return Err(format!("Dangling terms: {:?}", terms));
+                    } else {
+                        return Ok(expr);
+                    }
                 }
-                s => return Err(format!("Unexpected {:?}", s)),
+                Action::Error => return Err(format!("Unexpected token {:?}", token)),
             }
-        }
-
-        while !states.is_empty() {
-            self.reduce(&mut terms, &mut states)?;
-        }
-
-        let expr = self.add(terms.pop().unwrap());
-        if !terms.is_empty() {
-            Err(format!("Dangling terms: {:?}", terms))
-        } else {
-            Ok(expr)
         }
     }
 }
