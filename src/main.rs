@@ -11,6 +11,7 @@ use crate::{
 };
 
 mod ast;
+mod expr;
 mod instr;
 mod parser;
 

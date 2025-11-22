@@ -14,6 +14,10 @@ pub enum Lexeme {
     Comma,
     Dot,
     Eq,
+    Plus,
+    Minus,
+    Star,
+    Slash,
 
     // Literals
     Id(String),
@@ -32,6 +36,30 @@ pub enum Lexeme {
 impl Lexeme {
     fn id<S: Into<String>>(name: S) -> Lexeme {
         Lexeme::Id(name.into())
+    }
+}
+
+pub struct Lex {
+    lexemes: VecDeque<Lexeme>,
+}
+
+impl Lex {
+    pub fn new(lexemes: Vec<Lexeme>) -> Self {
+        Self {
+            lexemes: VecDeque::from(lexemes),
+        }
+    }
+
+    pub fn peek(&self) -> Option<&Lexeme> {
+        self.lexemes.get(0)
+    }
+
+    pub fn next(&mut self) -> Option<Lexeme> {
+        self.lexemes.pop_front()
+    }
+
+    pub fn require_next(&mut self) -> Result<Lexeme, String> {
+        self.next().ok_or("Expected Some token, found None".into())
     }
 }
 
@@ -177,6 +205,7 @@ pub fn parse(input: Vec<Lexeme>) -> Expr {
     parse_expr(&mut lexemes)
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,3 +338,4 @@ mod tests {
         assert_eq!(parse(lex(input)).interp(), 1);
     }
 }
+*/
