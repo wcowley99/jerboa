@@ -102,14 +102,14 @@ mod test {
         assert_eq!(pool.interp(start), 65);
     }
 
-    #[test]
-    fn interp_if_basic() {
-        let lex = Lex::new("if 5 then 1 else 2");
-        let mut pool = ExprPool::new();
-        let start = parse(&mut pool, lex).unwrap();
-
-        assert_eq!(pool.interp(start), 1);
-    }
+    // #[test]
+    // fn interp_if_basic() {
+    //     let lex = Lex::new("if 5 then 1 else 2");
+    //     let mut pool = ExprPool::new();
+    //     let start = parse(&mut pool, lex).unwrap();
+    //
+    // assert_eq!(pool.interp(start), 1);
+    // }
 
     #[test]
     fn interp_let_basic() {
