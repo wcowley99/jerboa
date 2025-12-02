@@ -1,10 +1,9 @@
 use std::{
-    collections::HashMap,
     io::{self, Read, Write},
     process::{Command, Stdio},
 };
 
-use crate::{expr::ExprPool, lex::Lex, parse::parse};
+use crate::{expr::ExprPool, lex::Lex};
 
 mod expr;
 mod instr;
@@ -14,7 +13,6 @@ mod parse;
 fn compile<S: Into<String>>(input: S) -> String {
     let lex = Lex::new(input);
     let mut pool = ExprPool::new();
-    let result = parse(&mut pool, lex);
     // let compiled = exprs.compile(HashMap::new());
 
     "temp".to_owned()
