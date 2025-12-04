@@ -82,7 +82,7 @@ impl ExprPool {
 
 #[cfg(test)]
 mod test {
-    use crate::{expr::ExprPool, lex::Lex, parse};
+    use crate::{expr::ExprPool, lex::Lex};
 
     #[test]
     fn interp_addition_basic() {

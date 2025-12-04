@@ -1,3 +1,4 @@
+use core::num;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
@@ -22,9 +23,34 @@ enum Terminal {
     Eof,
 }
 
-impl Into<Token> for Terminal {
-    fn into(self) -> Token {
-        Token::Terminal(self)
+impl Terminal {
+    fn from_lexeme(lexeme: &Lexeme) -> Terminal {
+        match lexeme {
+            Lexeme::LParen => Terminal::LParen,
+            Lexeme::RParen => Terminal::RParen,
+            // Comma,
+            // Dot,
+            Lexeme::Eq => Terminal::Eq,
+            Lexeme::Plus => Terminal::Plus,
+            // Minus,
+            Lexeme::Star => Terminal::Star,
+            // Slash,
+
+            // Literals
+            Lexeme::Id(_) => Terminal::Id,
+            // Str(String),
+            Lexeme::Num(_) => Terminal::Num,
+
+            // Keywords
+            // Inc,
+            Lexeme::Let => Terminal::Let,
+            Lexeme::In => Terminal::In,
+            // If,
+            // Then,
+            // Else,
+            //     }
+            _ => panic!("Not prepared to handle this case"),
+        }
     }
 }
 
@@ -36,16 +62,31 @@ enum NonTerminal {
     Term,
 }
 
+impl Into<Token> for Terminal {
+    fn into(self) -> Token {
+        Token::Terminal(self)
+    }
+}
+
 impl Into<Token> for NonTerminal {
     fn into(self) -> Token {
         Token::NonTerminal(self)
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Token {
-    Terminal(Terminal),
     NonTerminal(NonTerminal),
+    Terminal(Terminal),
+}
+
+impl Token {
+    pub fn is_non_terminal(&self) -> bool {
+        match self {
+            Token::NonTerminal(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for Terminal {
@@ -87,214 +128,195 @@ impl Display for Token {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Rule {
-    pub symbol: NonTerminal,
-    pub expr: Vec<Token>,
+    head: NonTerminal,
+    body: Vec<Token>,
 }
 
 impl Rule {
-    pub fn new(symbol: NonTerminal, expr: Vec<Token>) -> Self {
-        Self { symbol, expr }
-    }
-
-    pub fn windows(&self) -> impl Iterator<Item = (Token, Token)> {
-        self.expr.windows(2).map(|w| (w[0], w[1])).into_iter()
-    }
-
-    pub fn first_pos(&self) -> Item {
-        Item::new(self.symbol, Vec::new(), self.expr.clone())
-    }
-}
-
-fn extend_itemsets_table(table: &mut HashMap<Token, ItemSet>, item: Item) {
-    let lhs = *item.parsed.last().expect("This should never fail");
-    match table.get_mut(&lhs) {
-        Some(item_set) => {
-            item_set.insert(item);
-        }
-        None => {
-            table.insert(lhs, ItemSet(HashSet::from([item])));
+    pub fn new<T: Into<Vec<Token>>>(head: NonTerminal, body: T) -> Self {
+        Self {
+            head,
+            body: body.into(),
         }
     }
-}
 
-fn extend_table(
-    table: &mut HashMap<NonTerminal, HashSet<Terminal>>,
-    lhs: NonTerminal,
-    rhs: Token,
-) -> bool {
-    match rhs {
-        Token::Terminal(t) => match table.get_mut(&lhs) {
-            Some(terms) => terms.insert(t),
-            None => {
-                table.insert(lhs, HashSet::from([t]));
-                true
-            }
-        },
-        Token::NonTerminal(t) => {
-            let empty = HashSet::new();
-            let terms = table.get(&t).unwrap_or(&empty).clone();
+    pub fn as_item(&self, lookahead: Option<Terminal>) -> Item {
+        Item::new(self.clone(), 0, lookahead)
+    }
 
-            let mut changed = false;
-
-            match table.get_mut(&lhs) {
-                Some(knowledge) => {
-                    for t in terms {
-                        changed |= knowledge.insert(t);
-                    }
-
-                    changed
-                }
-                None => {
-                    table.insert(lhs, terms);
-                    true
-                }
-            }
+    pub fn at(&self, pos: usize) -> Option<Token> {
+        if pos < self.body.len() {
+            Some(self.body[pos])
+        } else {
+            None
         }
     }
-}
 
-fn gen_first_table(rules: &Vec<Rule>) -> HashMap<NonTerminal, HashSet<Terminal>> {
-    let mut table: HashMap<NonTerminal, HashSet<Terminal>> = HashMap::new();
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for rule in rules {
-            let lhs = rule.symbol;
-            let first = rule.expr[0];
-            changed |= extend_table(&mut table, lhs, first);
-        }
+    pub fn pairs(&self) -> impl Iterator<Item = (Token, Token)> {
+        self.body.windows(2).map(|w| (w[0], w[1])).into_iter()
     }
-    return table;
-}
-
-fn gen_follow_table(rules: &Vec<Rule>) -> HashMap<NonTerminal, HashSet<Terminal>> {
-    let mut table: HashMap<NonTerminal, HashSet<Terminal>> = HashMap::new();
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for rule in rules {
-            for (l, r) in rule.windows() {
-                if let Token::NonTerminal(t) = l {
-                    changed |= extend_table(&mut table, t, r);
-                }
-            }
-
-            if let Some(Token::NonTerminal(lhs)) = rule.expr.last() {
-                changed |= extend_table(&mut table, *lhs, Token::NonTerminal(rule.symbol));
-            }
-        }
-    }
-    return table;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Item {
-    lhs: NonTerminal,
-    parsed: Vec<Token>,
-    expected: Vec<Token>,
+    rule: Rule,
+    lookahead: Option<Terminal>,
+    pos: usize,
 }
 
 impl Item {
-    pub fn new<T: Into<Vec<Token>>, U: Into<Vec<Token>>>(
-        lhs: NonTerminal,
-        parsed: T,
-        expected: U,
-    ) -> Self {
+    pub fn new(rule: Rule, pos: usize, lookahead: Option<Terminal>) -> Self {
         Self {
-            lhs,
-            parsed: parsed.into(),
-            expected: expected.into(),
+            rule,
+            pos,
+            lookahead,
         }
     }
 
-    pub fn next(&self) -> Option<Self> {
-        if self.expected.len() == 0 {
-            None
+    pub fn locus(&self) -> Option<Token> {
+        self.rule.at(self.pos)
+    }
+
+    pub fn next(&self) -> Option<Token> {
+        self.rule.at(self.pos + 1)
+    }
+
+    pub fn successor(&self) -> Option<Self> {
+        if self.pos + 1 <= self.rule.body.len() {
+            Some(Item::new(self.rule.clone(), self.pos + 1, self.lookahead))
         } else {
-            Some(Self {
-                lhs: self.lhs,
-                parsed: [self.parsed.clone(), vec![*self.expected.first()?]].concat(),
-                expected: self.expected.clone().into_iter().skip(1).collect(),
-            })
+            None
         }
     }
 }
 
 impl Display for Item {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} ->", self.lhs)?;
-        for tok in self.parsed.iter() {
-            write!(f, " {}", tok)?;
+        write!(f, "{} ->", self.rule.head)?;
+
+        for (i, r) in self.rule.body.iter().enumerate() {
+            if i == self.pos {
+                write!(f, " .")?;
+            }
+            write!(f, " {}", r)?;
         }
-        write!(f, " .")?;
-        for tok in self.expected.iter() {
-            write!(f, " {}", tok)?;
+
+        if let Some(t) = self.lookahead {
+            write!(f, ", {}", t)?;
+        } else {
+            write!(f, ",")?;
         }
         Ok(())
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ItemSet(HashSet<Item>);
+struct ItemSet {
+    items: HashSet<Item>,
+}
 
 impl ItemSet {
-    pub fn insert(&mut self, item: Item) -> bool {
-        self.0.insert(item)
+    pub fn from<T: Into<Vec<Rule>>>(rules: T) -> Self {
+        let rules: Vec<Rule> = rules.into();
+        Self {
+            items: rules
+                .iter()
+                .map(|x| x.as_item(None))
+                .collect::<HashSet<_>>(),
+        }
     }
 
-    fn expand(
-        &mut self,
+    pub fn from_set(items: HashSet<Item>) -> Self {
+        Self { items }
+    }
+
+    pub fn closed(
+        &self,
         rules: &Vec<Rule>,
-        first: &HashMap<NonTerminal, HashSet<Terminal>>,
-        follow: &HashMap<NonTerminal, HashSet<Terminal>>,
-    ) {
+        firsts: &HashMap<NonTerminal, HashSet<Terminal>>,
+    ) -> ItemSet {
+        let mut items = ItemSet::from_set(self.items.clone());
         let mut changed = true;
         while changed {
             changed = false;
+
             let mut to_add = HashSet::new();
-            for item in self.0.iter() {
-                if let Some(Token::NonTerminal(t)) = item.expected.first() {
-                    for rule in rules.iter() {
-                        if rule.symbol == *t {
-                            to_add.insert(rule.first_pos());
-                        }
+            for item in items.items.iter() {
+                // dbg!(item);
+                match item.locus() {
+                    Some(Token::NonTerminal(t)) => {
+                        let lookaheads = items.lookaheads(t, firsts);
+                        to_add.extend(
+                            rules
+                                .iter()
+                                .filter(|x| x.head == t)
+                                .flat_map(|x| lookaheads.iter().map(|t| x.as_item(Some(*t)))),
+                        );
                     }
+                    _ => (),
                 }
             }
 
-            for item in to_add {
-                changed |= self.insert(item.clone());
+            for t in to_add {
+                changed |= items.items.insert(t);
             }
+        }
+        // dbg!("==========================");
+
+        items
+    }
+
+    pub fn successor(&self) -> Option<ItemSet> {
+        let set = self
+            .items
+            .iter()
+            .filter_map(|x| x.successor())
+            .collect::<HashSet<_>>();
+        if set.len() != 0 {
+            Some(ItemSet::from_set(set))
+        } else {
+            None
         }
     }
 
-    fn partition(&self, token: &Token) -> ItemSet {
-        let mut partition = ItemSet(HashSet::new());
-        for item in self.0.iter() {
-            let t = item.expected.first();
-            if t.is_some_and(|x| token == x) {
-                partition.insert(item.clone());
-            }
-        }
-
-        partition
+    pub fn lookaheads(
+        &self,
+        locus: NonTerminal,
+        firsts: &HashMap<NonTerminal, HashSet<Terminal>>,
+    ) -> HashSet<Terminal> {
+        self.items
+            .iter()
+            .filter(|x| x.locus() == Some(Token::NonTerminal(locus)))
+            .flat_map(|x| match x.next() {
+                Some(Token::NonTerminal(t)) => firsts
+                    .get(&t)
+                    .into_iter()
+                    .flat_map(|x| x.clone().into_iter())
+                    .collect::<Vec<_>>(),
+                Some(Token::Terminal(t)) => [t].into_iter().collect::<Vec<_>>(),
+                None => x.lookahead.into_iter().collect::<Vec<_>>(),
+            })
+            .collect::<HashSet<_>>()
     }
 
-    fn advance_all(&self) -> ItemSet {
-        let mut advanced = ItemSet(HashSet::new());
-        for item in self.0.iter() {
-            if let Some(next) = item.next() {
-                advanced.insert(next);
-            }
-        }
-
-        advanced
+    pub fn partition_on_locus(&self, alphabet: &HashSet<Token>) -> Vec<ItemSet> {
+        alphabet
+            .iter()
+            .map(|x| ItemSet {
+                items: self
+                    .items
+                    .clone()
+                    .into_iter()
+                    .filter(|i| i.locus() == Some(*x))
+                    .collect::<HashSet<_>>(),
+            })
+            .collect::<Vec<_>>()
     }
 }
 
 impl Display for ItemSet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for item in self.0.iter() {
+        for item in self.items.iter() {
             write!(f, "{}\n", item)?;
         }
 
@@ -302,75 +324,217 @@ impl Display for ItemSet {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+enum ReduceAction {
+    MkAdd,
+    MkMul,
+}
+
+impl ReduceAction {
+    fn pop_n<T: Sized>(stack: &mut Vec<T>, n: usize) -> Vec<T> {
+        let mut popped = Vec::new();
+        for _ in 0..n {
+            popped.push(stack.pop().unwrap());
+        }
+
+        popped
+    }
+
+    pub fn apply(&self, ast: &mut ExprPool, states: &mut Vec<usize>, inputs: &mut Vec<ExprRef>) {
+        match self {
+            ReduceAction::MkAdd => {
+                let _ = Self::pop_n(states, 3);
+
+                let exprs = Self::pop_n(inputs, 2);
+                inputs.push(ast.add(Expr::Binary(BinOp::Add, exprs[0], exprs[1])));
+            }
+            ReduceAction::MkMul => {
+                let _ = Self::pop_n(states, 3);
+
+                let exprs = Self::pop_n(inputs, 2);
+                inputs.push(ast.add(Expr::Binary(BinOp::Mul, exprs[0], exprs[1])));
+            }
+        }
+    }
+}
+
+enum Action {
+    Shift(usize),
+    Accept,
+    Reduce(Item, ReduceAction),
+    Expected,
+}
+
 struct Grammar {
-    states: Vec<ItemSet>,
-    transitions: Vec<HashMap<Token, usize>>,
+    rules: Vec<Rule>,
+    item_sets: Vec<ItemSet>,
 }
 
 impl Grammar {
-    pub fn new(rules: &Vec<Rule>, tokens: &Vec<Token>) -> Self {
-        let first_table = gen_first_table(rules);
-        let follow_table = gen_follow_table(rules);
-        let first = rules[0].first_pos();
-        let mut worklist = vec![ItemSet(HashSet::from([first]))];
-        let mut item_sets = Vec::new();
-        let mut transitions: Vec<HashMap<Token, usize>> = Vec::new();
+    pub fn new<T: Into<Vec<Rule>>, U: Into<Vec<Token>>>(rules: T, start_production: U) -> Self {
+        let mut rules: Vec<Rule> = rules.into();
+        rules.push(Rule::new(NonTerminal::Start, start_production.into()));
 
-        while let Some(mut itemset) = worklist.pop() {
-            itemset.expand(rules, &first_table, &follow_table);
+        let alphabet = rules
+            .iter()
+            .flat_map(|x| [vec![Token::NonTerminal(x.head)], x.body.clone()].concat())
+            .collect::<HashSet<_>>();
 
-            if item_sets.contains(&itemset) {
+        let firsts = Self::generate_first_sets(&rules);
+
+        let mut worklist = vec![ItemSet::from_set(HashSet::from([rules
+            .last()
+            .unwrap()
+            .as_item(Some(Terminal::Eof))]))];
+        let mut done = Vec::new();
+
+        while let Some(set) = worklist.pop() {
+            let set = set.closed(&rules, &firsts);
+
+            if done.contains(&set) {
                 continue;
             }
 
-            let mut next_item_sets = HashMap::new();
-            for item in itemset.0.iter() {
-                if let Some(i) = item.next() {
-                    extend_itemsets_table(&mut next_item_sets, i);
-                }
-            }
+            worklist.extend(
+                set.partition_on_locus(&alphabet)
+                    .iter()
+                    .filter_map(|x| x.successor()),
+            );
 
-            for next in next_item_sets.into_values() {
-                worklist.push(next);
-            }
-
-            item_sets.push(itemset);
-        }
-
-        for item_set in item_sets.iter() {
-            let mut t: HashMap<Token, usize> = HashMap::new();
-            for token in tokens {
-                let mut transition_state = item_set.partition(token).advance_all();
-                transition_state.expand(rules, &first_table, &follow_table);
-                let pos = item_sets.iter().position(|x| x == &transition_state);
-
-                if let Some(idx) = pos {
-                    t.insert(*token, idx);
-                }
-            }
-
-            transitions.push(t);
+            done.push(set);
         }
 
         Self {
-            states: item_sets,
-            transitions: transitions,
+            rules,
+            item_sets: done,
         }
     }
 
-    pub fn index_of(&self, item_set: &ItemSet) -> Option<usize> {
-        self.states.iter().position(|x| x == item_set)
+    fn generate_first_sets(rules: &Vec<Rule>) -> HashMap<NonTerminal, HashSet<Terminal>> {
+        let mut table: HashMap<NonTerminal, HashSet<Terminal>> = HashMap::new();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for rule in rules {
+                changed |= Self::extend_table(&mut table, rule.head, rule.body[0]);
+            }
+        }
+        return table;
     }
 
-    pub fn transitions(&self, state: usize) -> &HashMap<Token, usize> {
-        &self.transitions[state]
+    fn generate_follow_sets(rules: &Vec<Rule>) -> HashMap<NonTerminal, HashSet<Terminal>> {
+        let mut table: HashMap<NonTerminal, HashSet<Terminal>> = HashMap::new();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for rule in rules {
+                for (l, r) in rule.pairs() {
+                    if let Token::NonTerminal(t) = l {
+                        changed |= Self::extend_table(&mut table, t, r);
+                    }
+                }
+
+                if let Some(Token::NonTerminal(lhs)) = rule.body.last() {
+                    changed |= Self::extend_table(&mut table, *lhs, Token::NonTerminal(rule.head));
+                }
+            }
+        }
+        return table;
+    }
+
+    fn extend_table(
+        table: &mut HashMap<NonTerminal, HashSet<Terminal>>,
+        lhs: NonTerminal,
+        rhs: Token,
+    ) -> bool {
+        match rhs {
+            Token::Terminal(t) => match table.get_mut(&lhs) {
+                Some(terms) => terms.insert(t),
+                None => {
+                    table.insert(lhs, HashSet::from([t]));
+                    true
+                }
+            },
+            Token::NonTerminal(t) => {
+                let empty = HashSet::new();
+                let terms = table.get(&t).unwrap_or(&empty).clone();
+
+                let mut changed = false;
+
+                match table.get_mut(&lhs) {
+                    Some(knowledge) => {
+                        for t in terms {
+                            changed |= knowledge.insert(t);
+                        }
+
+                        changed
+                    }
+                    None => {
+                        table.insert(lhs, terms);
+                        true
+                    }
+                }
+            }
+        }
+    }
+
+    fn action(&self, state: usize, term: Terminal) -> Action {
+        todo!()
+    }
+
+    fn goto(&self, state: usize, item: &Item) -> usize {
+        todo!()
+    }
+
+    fn expected(&self, state: usize) -> Vec<Terminal> {
+        Vec::new()
+    }
+
+    pub fn into_ast(&self, mut lex: Lex) -> Option<(ExprPool, ExprRef)> {
+        let mut ast = ExprPool::new();
+
+        let mut states = vec![0 as usize];
+        let mut inputs = Vec::new();
+
+        while true {
+            let token = lex.peek()?;
+            let state = *states.last()?;
+
+            match self.action(state, Terminal::from_lexeme(token)) {
+                Action::Shift(s) => {
+                    states.push(s);
+                    match token {
+                        Lexeme::Num(n) => inputs.push(ast.add(Expr::Num(*n))),
+                        Lexeme::Id(id) => inputs.push(ast.add(Expr::Id(id.clone()))),
+                        _ => (),
+                    }
+                    lex.consume();
+                }
+                Action::Accept => {
+                    assert!(inputs.len() == 1);
+                    let start = inputs.pop()?;
+                    return Some((ast, start));
+                }
+                Action::Reduce(item, action) => {
+                    action.apply(&mut ast, &mut states, &mut inputs);
+
+                    let state = *states.last()?;
+                    states.push(self.goto(state, &item));
+                }
+                Action::Expected => {
+                    let expected = self.expected(state);
+                    println!("Expected one of {:?}", expected);
+                    return None;
+                }
+            }
+        }
+
+        None
     }
 }
 
 impl Display for Grammar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (i, item_set) in self.states.iter().enumerate() {
+        for (i, item_set) in self.item_sets.iter().enumerate() {
             write!(f, "{}: {}\n", i, item_set)?;
         }
 
@@ -380,12 +544,13 @@ impl Display for Grammar {
 
 #[cfg(test)]
 mod test {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
+    use std::collections::HashSet;
 
-    use crate::parse::{
-        Grammar, Item, ItemSet, NonTerminal, Rule, Terminal, Token, gen_first_table,
-        gen_follow_table,
-    };
+    use crate::parse::Grammar;
+    use crate::parse::NonTerminal;
+    use crate::parse::Rule;
+    use crate::parse::Terminal;
 
     fn rules() -> Vec<Rule> {
         use NonTerminal::*;
@@ -408,7 +573,7 @@ mod test {
         use NonTerminal::*;
         use Terminal::*;
         let rules = rules();
-        let first_table = gen_first_table(&rules);
+        let first_table = Grammar::generate_first_sets(&rules);
 
         let expected = HashMap::from([
             (Start, HashSet::from([LParen, Num, Id])),
@@ -424,7 +589,7 @@ mod test {
         use NonTerminal::*;
         use Terminal::*;
         let rules = rules();
-        let follow_table = gen_follow_table(&rules);
+        let follow_table = Grammar::generate_follow_sets(&rules);
 
         let expected = HashMap::from([
             (Expr, HashSet::from([Plus, RParen, Eof])),
@@ -435,228 +600,21 @@ mod test {
     }
 
     #[test]
-    fn test_gen_item_sets() {
+    fn generate_parse_tables_test() {
         use NonTerminal::*;
         use Terminal::*;
 
-        let rules = vec![
-            Rule::new(Start, vec![Expr.into(), Eof.into()]),
-            Rule::new(Expr, vec![Expr.into(), Plus.into(), Term.into()]),
-            Rule::new(Expr, vec![Term.into()]),
-            Rule::new(Term, vec![LParen.into(), Expr.into(), RParen.into()]),
-            Rule::new(Term, vec![Num.into()]),
+        let rules = [
+            Rule::new(Expr, [Term.into()]),
+            Rule::new(Expr, [LParen.into(), Expr.into(), RParen.into()]),
+            Rule::new(Term, [Num.into()]),
+            Rule::new(Term, [Plus.into(), Term.into()]),
+            Rule::new(Term, [Term.into(), Plus.into(), Num.into()]),
         ];
-        let tokens: Vec<Token> = vec![
-            Expr.into(),
-            Term.into(),
-            Num.into(),
-            Plus.into(),
-            LParen.into(),
-            RParen.into(),
-            Eof.into(),
-        ];
-        let grammar = Grammar::new(&rules, &tokens);
-
-        assert_eq!(grammar.states.len(), 10);
+        let grammar = Grammar::new(rules, [Expr.into()]);
 
         println!("{}", grammar);
 
-        assert!(grammar.states.contains(&ItemSet(HashSet::from([
-            Item::new(Start, [], [Expr.into(), Eof.into()]),
-            Item::new(Expr, [], [Expr.into(), Plus.into(), Term.into()]),
-            Item::new(Expr, [], [Term.into()]),
-            Item::new(Term, [], [LParen.into(), Expr.into(), RParen.into()]),
-            Item::new(Term, [], [Num.into()]),
-        ]))));
-        assert!(grammar.states.contains(&ItemSet(HashSet::from([Item::new(
-            Term,
-            [Num.into()],
-            []
-        )]))));
-        assert!(grammar.states.contains(&ItemSet(HashSet::from([
-            Item::new(Start, [Expr.into()], [Eof.into()]),
-            Item::new(Expr, [Expr.into()], [Plus.into(), Term.into()]),
-        ]))));
-        assert!(grammar.states.contains(&ItemSet(HashSet::from([Item::new(
-            Expr,
-            [Term.into()],
-            []
-        )]))));
-        assert!(grammar.states.contains(&ItemSet(HashSet::from([
-            Item::new(Term, [], [LParen.into(), Expr.into(), RParen.into()]),
-            Item::new(Expr, [], [Expr.into(), Plus.into(), Term.into()]),
-            Item::new(Expr, [], [Term.into()]),
-            Item::new(Term, [LParen.into()], [Expr.into(), RParen.into()]),
-            Item::new(Term, [], [Num.into()]),
-        ]))));
-        assert!(grammar.states.contains(&ItemSet(HashSet::from([
-            Item::new(Term, [LParen.into(), Expr.into()], [RParen.into()]),
-            Item::new(Expr, [Expr.into()], [Plus.into(), Term.into()])
-        ]))));
-        assert!(grammar.states.contains(&ItemSet(HashSet::from([
-            Item::new(Expr, [Expr.into(), Plus.into()], [Term.into()]),
-            Item::new(Term, [], [LParen.into(), Expr.into(), RParen.into()]),
-            Item::new(Term, [], [Num.into()]),
-        ]))));
-        assert!(grammar.states.contains(&ItemSet(HashSet::from([Item::new(
-            Expr,
-            [Expr.into(), Plus.into(), Term.into()],
-            []
-        )]))));
-        assert!(grammar.states.contains(&ItemSet(HashSet::from([Item::new(
-            Start,
-            [Expr.into(), Eof.into()],
-            []
-        )]))));
-    }
-
-    /// Table constructed from rules as shown [here](https://en.wikipedia.org/wiki/LR_parser#Finding_the_reachable_item_sets_and_the_transitions_between_them)
-    /// We have one extra state because our Grammar considers S -> E $ . to be a valid state
-    #[test]
-    fn test_lr0_parse_table() {
-        use NonTerminal::*;
-        use Terminal::*;
-
-        let rules = vec![
-            Rule::new(Start, vec![Expr.into(), Eof.into()]),
-            Rule::new(Expr, vec![Expr.into(), Plus.into(), Term.into()]),
-            Rule::new(Expr, vec![Expr.into(), Star.into(), Term.into()]),
-            Rule::new(Expr, vec![Term.into()]),
-            Rule::new(Term, vec![Num.into()]),
-            Rule::new(Term, vec![Id.into()]),
-        ];
-        let tokens = vec![
-            Expr.into(),
-            Eof.into(),
-            Plus.into(),
-            Term.into(),
-            Star.into(),
-            Num.into(),
-            Id.into(),
-        ];
-        let grammar = Grammar::new(&rules, &tokens);
-
-        println!("{}", grammar);
-
-        assert_eq!(grammar.states.len(), 10);
-
-        // States with no transitions
-        let s1 = ItemSet(HashSet::from([Item::new(Term, [Id.into()], [])]));
-        let s2 = ItemSet(HashSet::from([Item::new(Term, [Num.into()], [])]));
-        let s4 = ItemSet(HashSet::from([Item::new(Expr, [Term.into()], [])]));
-        let s7 = ItemSet(HashSet::from([Item::new(
-            Expr,
-            [Expr.into(), Star.into(), Term.into()],
-            [],
-        )]));
-        let s8 = ItemSet(HashSet::from([Item::new(
-            Expr,
-            [Expr.into(), Plus.into(), Term.into()],
-            [],
-        )]));
-        let s9 = ItemSet(HashSet::from([Item::new(
-            Start,
-            [Expr.into(), Eof.into()],
-            [],
-        )]));
-
-        assert!(grammar.states.contains(&s1));
-        assert!(grammar.states.contains(&s2));
-        assert!(grammar.states.contains(&s4));
-        assert!(grammar.states.contains(&s7));
-        assert!(grammar.states.contains(&s8));
-        assert!(grammar.states.contains(&s9));
-
-        assert_eq!(
-            grammar.transitions(grammar.index_of(&s1).unwrap()),
-            &HashMap::new()
-        );
-        assert_eq!(
-            grammar.transitions(grammar.index_of(&s2).unwrap()),
-            &HashMap::new()
-        );
-        assert_eq!(
-            grammar.transitions(grammar.index_of(&s4).unwrap()),
-            &HashMap::new()
-        );
-        assert_eq!(
-            grammar.transitions(grammar.index_of(&s7).unwrap()),
-            &HashMap::new()
-        );
-        assert_eq!(
-            grammar.transitions(grammar.index_of(&s8).unwrap()),
-            &HashMap::new()
-        );
-        assert_eq!(
-            grammar.transitions(grammar.index_of(&s9).unwrap()),
-            &HashMap::new()
-        );
-
-        // States with transitions
-        let s0 = ItemSet(HashSet::from([
-            Item::new(Start, [], [Expr.into(), Eof.into()]),
-            Item::new(Expr, [], [Expr.into(), Star.into(), Term.into()]),
-            Item::new(Expr, [], [Expr.into(), Plus.into(), Term.into()]),
-            Item::new(Expr, [], [Term.into()]),
-            Item::new(Term, [], [Id.into()]),
-            Item::new(Term, [], [Num.into()]),
-        ]));
-
-        let s3 = ItemSet(HashSet::from([
-            Item::new(Start, [Expr.into()], [Eof.into()]),
-            Item::new(Expr, [Expr.into()], [Plus.into(), Term.into()]),
-            Item::new(Expr, [Expr.into()], [Star.into(), Term.into()]),
-        ]));
-
-        let s5 = ItemSet(HashSet::from([
-            Item::new(Expr, [Expr.into(), Star.into()], [Term.into()]),
-            Item::new(Term, [], [Id.into()]),
-            Item::new(Term, [], [Num.into()]),
-        ]));
-
-        let s6 = ItemSet(HashSet::from([
-            Item::new(Expr, [Expr.into(), Plus.into()], [Term.into()]),
-            Item::new(Term, [], [Id.into()]),
-            Item::new(Term, [], [Num.into()]),
-        ]));
-
-        assert!(grammar.states.contains(&s0));
-        assert!(grammar.states.contains(&s3));
-        assert!(grammar.states.contains(&s5));
-        assert!(grammar.states.contains(&s6));
-
-        assert_eq!(
-            grammar.transitions(grammar.index_of(&s0).unwrap()),
-            &HashMap::from([
-                (Id.into(), grammar.index_of(&s1).unwrap()),
-                (Num.into(), grammar.index_of(&s2).unwrap()),
-                (Expr.into(), grammar.index_of(&s3).unwrap()),
-                (Term.into(), grammar.index_of(&s4).unwrap())
-            ])
-        );
-        assert_eq!(
-            grammar.transitions(grammar.index_of(&s3).unwrap()),
-            &HashMap::from([
-                (Star.into(), grammar.index_of(&s5).unwrap()),
-                (Plus.into(), grammar.index_of(&s6).unwrap()),
-                (Eof.into(), grammar.index_of(&s9).unwrap()),
-            ])
-        );
-        assert_eq!(
-            grammar.transitions(grammar.index_of(&s5).unwrap()),
-            &HashMap::from([
-                (Id.into(), grammar.index_of(&s1).unwrap()),
-                (Num.into(), grammar.index_of(&s2).unwrap()),
-                (Term.into(), grammar.index_of(&s7).unwrap()),
-            ])
-        );
-        assert_eq!(
-            grammar.transitions(grammar.index_of(&s6).unwrap()),
-            &HashMap::from([
-                (Id.into(), grammar.index_of(&s1).unwrap()),
-                (Num.into(), grammar.index_of(&s2).unwrap()),
-                (Term.into(), grammar.index_of(&s8).unwrap()),
-            ])
-        );
+        assert!(false);
     }
 }
