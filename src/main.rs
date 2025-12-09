@@ -3,17 +3,18 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{expr::ExprPool, lex::Lex};
+use lalrpop_util::lalrpop_mod;
 
-mod expr;
+lalrpop_mod!(pub grammar);
+
+use crate::ast::Arena;
+
+mod ast;
 mod instr;
-mod lex;
-mod parse;
 
 fn compile<S: Into<String>>(input: S) -> String {
-    let lex = Lex::new(input);
-    let mut pool = ExprPool::new();
-    // let compiled = exprs.compile(HashMap::new());
+    let mut arena = Arena::from(&input.into());
+    let compiled = arena.compile();
 
     "temp".to_owned()
 }

@@ -2,10 +2,11 @@ name = "variable shadowing"
 
 [input]
 program = """
-let x = 5 in 
-let x = inc(x) in
-let x = inc(x) in
-x
+let x = 5 in {
+  let x = inc(x) in {
+    let x = inc(x) in {
+      x
+}}}
 """
 
 [expected]
