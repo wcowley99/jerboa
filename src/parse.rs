@@ -299,18 +299,30 @@ impl ItemSet {
             .collect::<HashSet<_>>()
     }
 
-    pub fn partition_on_locus(&self, alphabet: &HashSet<Token>) -> Vec<ItemSet> {
+    pub fn partition_on_locus(&self, alphabet: &HashSet<Token>) -> Vec<(Token, ItemSet)> {
         alphabet
             .iter()
-            .map(|x| ItemSet {
-                items: self
-                    .items
-                    .clone()
-                    .into_iter()
-                    .filter(|i| i.locus() == Some(*x))
-                    .collect::<HashSet<_>>(),
+            .map(|x| {
+                (
+                    *x,
+                    ItemSet {
+                        items: self
+                            .items
+                            .clone()
+                            .into_iter()
+                            .filter(|i| i.locus() == Some(*x))
+                            .collect::<HashSet<_>>(),
+                    },
+                )
             })
             .collect::<Vec<_>>()
+    }
+
+    pub fn partition(&self, alphabet: &HashSet<Token>) -> Vec<ItemSet> {
+        self.partition_on_locus(alphabet)
+            .into_iter()
+            .map(|(_, x)| x)
+            .collect()
     }
 }
 
@@ -395,7 +407,7 @@ impl Grammar {
             }
 
             worklist.extend(
-                set.partition_on_locus(&alphabet)
+                set.partition(&alphabet)
                     .iter()
                     .filter_map(|x| x.successor()),
             );
@@ -403,10 +415,35 @@ impl Grammar {
             done.push(set);
         }
 
+        let transitions = Self::transitions(&done, &alphabet, &rules, &firsts);
+
         Self {
             rules,
             item_sets: done,
         }
+    }
+
+    fn transitions(
+        item_sets: &Vec<ItemSet>,
+        alphabet: &HashSet<Token>,
+        rules: &Vec<Rule>,
+        firsts: &HashMap<NonTerminal, HashSet<Terminal>>,
+    ) -> Vec<HashMap<Token, usize>> {
+        item_sets
+            .iter()
+            .map(|set| {
+                set.partition_on_locus(alphabet)
+                    .iter()
+                    .filter_map(|(x, y)| {
+                        Some((
+                            *x,
+                            y.successor().and_then(|y| Some(y.closed(rules, firsts)))?,
+                        ))
+                    })
+                    .map(|(x, y)| (x, item_sets.iter().position(|i| *i == y).unwrap()))
+                    .collect::<HashMap<_, _>>()
+            })
+            .collect()
     }
 
     fn generate_first_sets(rules: &Vec<Rule>) -> HashMap<NonTerminal, HashSet<Terminal>> {
