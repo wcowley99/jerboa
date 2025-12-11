@@ -94,7 +94,7 @@ impl ToString for Operand {
 }
 
 impl Operand {
-    pub fn local_variable(index: usize) -> Operand {
+    pub fn local(index: usize) -> Operand {
         Operand::Mem(Some(-8 * (index as i64)), Some(Reg::RSP), None, None)
     }
 }
@@ -103,6 +103,7 @@ impl Operand {
 pub enum Instr {
     Mov(Operand, Operand),
     Add(Operand, Operand),
+    Neg(Reg),
     Cmp(Operand, Operand),
     Je(String),
     Jmp(String),
@@ -115,6 +116,7 @@ impl ToString for Instr {
         match self {
             Instr::Mov(s, d) => format!("mov {}, {}", s.to_string(), d.to_string()),
             Instr::Add(s, d) => format!("add {}, {}", s.to_string(), d.to_string()),
+            Instr::Neg(s) => format!("neg {}", s.to_string()),
             Instr::Cmp(s, d) => format!("cmp {}, {}", s.to_string(), d.to_string()),
             Instr::Je(s) => format!("je {}", s),
             Instr::Jmp(s) => format!("jmp {}", s),

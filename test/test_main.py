@@ -4,7 +4,7 @@ import subprocess
 
 def compile_and_run(program):
     result = subprocess.run(
-        ["../target/debug/pl"],
+        ["../target/debug/jerboa", "-v"],
         input=program,
         text=True,
         capture_output=True,
@@ -22,6 +22,7 @@ def compile_and_run(program):
     subprocess.run(["rm", "a.out"])
 
     return result
+
 
 def validate(expected, result):
     exit_code = expected["exit_code"]
@@ -45,17 +46,29 @@ def test(filename):
     prog_result = compile_and_run(program)
 
     if prog_result == False:
+        test_pass = False
         result = "Compilation Failed"
     elif data["expected"] is None:
         print("No expected outputs provided")
+        test_pass = False
         result = "Success"
     else:
-        result = "Success" if validate(data["expected"], prog_result) else "Failure"
+        test_pass = validate(data["expected"], prog_result)
+        result = "Success" if test_pass else "Failure"
 
     print(f"Testing {data['name']} ({filename}) .......... {result}")
+
+    return test_pass
 
 
 tests = glob.glob("./*.toml")
 
+total = 0
+success = 0
 for file in tests:
-    test(file)
+    total += 1
+    if test(file):
+        success += 1
+
+result = "Success" if total == success else "Failure"
+print(f"testing result: {result}. {success} passed; {total - success} failed.")

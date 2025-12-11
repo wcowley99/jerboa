@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::format};
 
 use lalrpop_util::lalrpop_mod;
 
-use crate::instr::Instr;
+use crate::instr::{Instr, Operand, Reg};
 lalrpop_mod!(pub grammar);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -20,9 +20,11 @@ pub struct ExprRef(pub usize);
 pub enum Expr {
     Num(i64),
     Add1(ExprRef),
+    Neg(ExprRef),
     Bin(BinOp, ExprRef, ExprRef),
     Let(String, ExprRef, ExprRef),
     Var(String),
+    If(ExprRef, ExprRef, ExprRef),
 }
 
 impl Expr {
@@ -81,6 +83,7 @@ impl Arena {
         match self.get(expr).unwrap() {
             Expr::Num(val) => *val,
             Expr::Add1(expr) => 1 + self.eval(*expr, env),
+            Expr::Neg(expr) => -self.eval(*expr, env),
             Expr::Let(var, expr, body) => {
                 let mut env = env.clone();
                 env.insert(var.clone(), self.subst(*expr, &env));
@@ -94,6 +97,13 @@ impl Arena {
                 BinOp::Mul => self.eval(*lhs, env) * self.eval(*rhs, env),
                 BinOp::Div => self.eval(*lhs, env) / self.eval(*rhs, env),
             },
+            Expr::If(cond, body, branch) => {
+                if self.eval(*cond, env) != 0 {
+                    self.eval(*body, env)
+                } else {
+                    self.eval(*branch, env)
+                }
+            }
         }
     }
 
@@ -103,7 +113,64 @@ impl Arena {
     }
 
     pub fn compile(&self) -> Vec<Instr> {
-        Vec::new()
+        let mut env = Vec::new();
+        self.to_asm(self.entrypoint.unwrap(), &mut env)
+    }
+
+    fn to_asm(&self, expr: ExprRef, mut env: &mut Vec<String>) -> Vec<Instr> {
+        match self.get(expr).unwrap() {
+            Expr::Num(val) => vec![Instr::mov(*val, Reg::RAX)],
+            Expr::Add1(expr) => {
+                let mut program = self.to_asm(*expr, env);
+                program.push(Instr::add(1, Reg::RAX));
+                program
+            }
+            Expr::Neg(expr) => {
+                let mut program = self.to_asm(*expr, env);
+                program.push(Instr::Neg(Reg::RAX));
+                program
+            }
+            Expr::Let(var, assn, body) => {
+                let assn_asm = self.to_asm(*assn, env);
+
+                let pos = env.len();
+                env.push(var.clone());
+
+                let prog = [
+                    assn_asm,
+                    vec![Instr::mov(Reg::RAX, Operand::local(pos))],
+                    self.to_asm(*body, &mut env),
+                ]
+                .concat();
+
+                env.pop();
+
+                prog
+            }
+            Expr::Var(var) => vec![Instr::mov(
+                Operand::local(env.iter().rposition(|x| x == var).unwrap()),
+                Reg::RAX,
+            )],
+            Expr::Bin(_, _, _) => todo!(),
+            Expr::If(cond, body, branch) => {
+                let label_true = format!("if_zero{}", expr.0);
+                let label_false = format!("if_nz{}", expr.0);
+                let label_done = format!("done{}", expr.0);
+                [
+                    self.to_asm(*cond, env),
+                    vec![
+                        Instr::cmp(0, Reg::RAX),
+                        Instr::Je(label_false.clone()),
+                        Instr::label(label_true),
+                    ],
+                    self.to_asm(*body, env),
+                    vec![Instr::jmp(label_done.clone()), Instr::label(label_false)],
+                    self.to_asm(*branch, env),
+                    vec![Instr::label(label_done)],
+                ]
+                .concat()
+            }
+        }
     }
 }
 
@@ -111,6 +178,11 @@ impl Arena {
 mod test {
 
     use crate::ast::Arena;
+
+    #[test]
+    fn interp_negative_number() {
+        assert_eq!(Arena::eval_input("-10"), -10);
+    }
 
     #[test]
     fn interp_addition_basic() {
@@ -148,5 +220,10 @@ mod test {
     #[test]
     fn interp_shadowing2() {
         assert_eq!(Arena::eval_input("let x = 5 in {let x = 3 in {x + 1}}"), 4);
+    }
+
+    #[test]
+    fn simple_if() {
+        assert_eq!(Arena::eval_input("if 5 then {1} else {2}"), 1);
     }
 }
