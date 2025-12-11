@@ -1,32 +1,70 @@
 use std::{
-    collections::HashMap,
     env,
     io::{self, Read, Write},
     process::{Command, Stdio},
 };
 
+use lalrpop_util::lalrpop_mod;
+
+lalrpop_mod!(pub grammar);
+
 use crate::{
-    ast::Expr,
-    parser::{lex, parse},
+    ast::Arena,
+    instr::{Instr, Reg},
 };
 
 mod ast;
 mod instr;
-mod parser;
 
 fn compile<S: Into<String>>(input: S) -> String {
-    let lexemes = lex(input);
-    let exprs = parse(lexemes);
-    let compiled = exprs.compile(HashMap::new());
+    let preamble = ".text \n\
+        .global _start \n\
+        \n\
+        _start:"
+        .to_string();
 
-    compiled
+    let envoi = vec![
+        Instr::mov(Reg::RAX, Reg::RDI),
+        Instr::mov(60, Reg::RAX),
+        Instr::Syscall,
+    ];
+
+    let arena = Arena::from(&input.into());
+    let compiled = arena.compile();
+
+    let prog = [compiled, envoi].concat();
+
+    format!(
+        "{}\n",
+        [
+            preamble,
+            prog.iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        ]
+        .join("\n")
+    )
 }
 
 fn main() -> io::Result<()> {
+    let args: Vec<String> = env::args().collect();
+
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer)?;
 
+    let verbose = args.contains(&"-v".to_string()) || args.contains(&"--verbose".to_string());
+    let dry_run = args.contains(&"--dry-run".to_string());
+
     let asm = compile(buffer);
+
+    if verbose {
+        println!("{}", asm);
+    }
+
+    if dry_run {
+        return Ok(());
+    }
 
     let objfile = "tmp.o";
 

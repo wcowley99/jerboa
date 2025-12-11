@@ -2,9 +2,10 @@ name = "nested let bindings"
 
 [input]
 program = """
-let x = 5 in 
-let y = inc(x) in
+let x = 5 in {
+let y = inc(x) in {
 y
+}}
 """
 
 [expected]

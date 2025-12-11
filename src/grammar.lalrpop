@@ -1,0 +1,49 @@
+use std::str::FromStr;
+use crate::ast::{BinOp, ExprRef, Expr, Arena};
+
+grammar(arena: &mut Arena);
+
+/* match {
+    "+",
+    "*",
+    "(",
+    ")",
+    r"[0-9]+",
+    r"[a-zA-Z]+",
+
+    r"\s*" => {},
+} */
+
+pub Expr: ExprRef = {
+    <l:Expr> "+" <r:Factor> => arena.add(Expr::Bin(BinOp::Add, l, r)),
+    <l:Expr> "-" <r:Factor> => arena.add(Expr::Bin(BinOp::Sub, l, r)),
+    Factor,
+};
+
+Factor: ExprRef = {
+  <l:Factor> "*" <r:Term> => arena.add(Expr::Bin(BinOp::Mul, l, r)),
+  <l:Factor> "/" <r:Term> => arena.add(Expr::Bin(BinOp::Div, l, r)),
+  Term,
+};
+
+pub Term: ExprRef = {
+    "(" <Expr> ")",
+    "let" <id: Name> "=" <assn: Expr> "in" "{" <body: Expr> "}" => arena.add(Expr::Let(id, assn, body)),
+    "if" <cond: Expr> "then" "{" <body: Expr> "}" "else" "{" <branch: Expr> "}" => arena.add(Expr::If(cond, body, branch)),
+    "-" <t: Term> => arena.add(Expr::Neg(t)),
+    // Term "++" => arena.add(Expr::Add1(<>)),
+    Num,
+    Var,
+};
+
+Num: ExprRef = {
+    r"[0-9]+" => arena.add(Expr::Num(i64::from_str(<>).unwrap())),
+};
+
+Var: ExprRef = {
+    Name => arena.add(Expr::Var(<>)),
+};
+
+Name: String = {
+    r"[a-zA-Z]+" => String::from(<>),
+}
