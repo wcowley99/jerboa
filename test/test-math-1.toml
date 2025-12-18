@@ -1,0 +1,10 @@
+name = "complex math equation"
+
+[input]
+program = """
+(2 - 3) + (4 * 5)
+"""
+
+[expected]
+exit_code = 19
+stdout = ""

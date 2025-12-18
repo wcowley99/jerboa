@@ -103,6 +103,8 @@ impl Operand {
 pub enum Instr {
     Mov(Operand, Operand),
     Add(Operand, Operand),
+    Sub(Operand, Operand),
+    IMul(Operand, Operand),
     Neg(Reg),
     Cmp(Operand, Operand),
     Je(String),
@@ -116,6 +118,8 @@ impl ToString for Instr {
         match self {
             Instr::Mov(s, d) => format!("mov {}, {}", s.to_string(), d.to_string()),
             Instr::Add(s, d) => format!("add {}, {}", s.to_string(), d.to_string()),
+            Instr::Sub(s, d) => format!("sub {}, {}", s.to_string(), d.to_string()),
+            Instr::IMul(s, d) => format!("imul {}, {}", s.to_string(), d.to_string()),
             Instr::Neg(s) => format!("neg {}", s.to_string()),
             Instr::Cmp(s, d) => format!("cmp {}, {}", s.to_string(), d.to_string()),
             Instr::Je(s) => format!("je {}", s),
@@ -133,6 +137,14 @@ impl Instr {
 
     pub fn add<S: Into<Operand>, D: Into<Operand>>(s: S, d: D) -> Instr {
         Instr::Add(s.into(), d.into())
+    }
+
+    pub fn sub<S: Into<Operand>, D: Into<Operand>>(s: S, d: D) -> Instr {
+        Instr::Sub(s.into(), d.into())
+    }
+
+    pub fn imul<S: Into<Operand>, D: Into<Operand>>(s: S, d: D) -> Instr {
+        Instr::IMul(s.into(), d.into())
     }
 
     pub fn cmp<S: Into<Operand>, D: Into<Operand>>(s: S, d: D) -> Instr {

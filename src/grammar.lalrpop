@@ -1,7 +1,8 @@
 use std::str::FromStr;
-use crate::ast::{BinOp, ExprRef, Expr, Arena};
+use crate::common::{BinOp, ExprRef, FlatTree};
+use crate::ast::Expr;
 
-grammar(arena: &mut Arena);
+grammar(arena: &mut FlatTree<Expr>);
 
 /* match {
     "+",

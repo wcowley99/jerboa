@@ -3,7 +3,7 @@ name = "nested let bindings"
 [input]
 program = """
 let x = 5 in {
-let y = inc(x) in {
+let y = x+1 in {
 y
 }}
 """

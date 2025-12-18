@@ -9,11 +9,13 @@ use lalrpop_util::lalrpop_mod;
 lalrpop_mod!(pub grammar);
 
 use crate::{
-    ast::Arena,
+    ast::AST,
     instr::{Instr, Reg},
 };
 
+mod anf;
 mod ast;
+mod common;
 mod instr;
 
 fn compile<S: Into<String>>(input: S) -> String {
@@ -29,8 +31,9 @@ fn compile<S: Into<String>>(input: S) -> String {
         Instr::Syscall,
     ];
 
-    let arena = Arena::from(&input.into());
-    let compiled = arena.compile();
+    let ast = AST::from(&input.into());
+    let anf = ast.to_anf();
+    let compiled = anf.compile();
 
     let prog = [compiled, envoi].concat();
 
