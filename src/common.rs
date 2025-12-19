@@ -28,6 +28,7 @@ impl Display for BinOp {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CmpOp {
     Eq,
+    Neq,
     Leq,
     Geq,
     Lt,
@@ -38,6 +39,7 @@ impl Display for CmpOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let sym = match self {
             CmpOp::Eq => "==",
+            CmpOp::Neq => "!=",
             CmpOp::Leq => "<=",
             CmpOp::Geq => ">=",
             CmpOp::Lt => "<",

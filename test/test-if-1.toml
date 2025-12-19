@@ -2,7 +2,7 @@ name = "simple if expression"
 
 [input]
 program = """
-if 5 then {1} else {2}
+if true then {1} else {2}
 """
 
 [expected]

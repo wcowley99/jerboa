@@ -2,7 +2,7 @@ name = "if with nested let expression"
 
 [input]
 program = """
-if let x = -3 in {x+3} then {5} else {10}
+if let x = -3 in {x+3 != 0} then {5} else {10}
 """
 
 [expected]

@@ -1,5 +1,9 @@
 #[derive(Debug, Copy, Clone)]
 pub enum Reg {
+    // 8-bit registers
+    AL,
+
+    // 64-bit registers
     RAX,
     RCX,
     RDX,
@@ -21,6 +25,7 @@ pub enum Reg {
 impl ToString for Reg {
     fn to_string(&self) -> String {
         match *self {
+            Reg::AL => "%al".into(),
             Reg::RAX => "%rax".into(),
             Reg::RCX => "%rcx".into(),
             Reg::RDX => "%rdx".into(),
@@ -102,13 +107,26 @@ impl Operand {
 #[derive(Debug, Clone)]
 pub enum Instr {
     Mov(Operand, Operand),
+
     Add(Operand, Operand),
     Sub(Operand, Operand),
     IMul(Operand, Operand),
+
     Neg(Reg),
+
     Cmp(Operand, Operand),
+
     Je(String),
     Jmp(String),
+
+    // TODO: set operations only work on byte registers, make sure to enforce this rule
+    Sete(Reg),
+    Setne(Reg),
+    Setle(Reg),
+    Setge(Reg),
+    Setl(Reg),
+    Setg(Reg),
+
     Label(String),
     Syscall,
 }
@@ -117,13 +135,25 @@ impl ToString for Instr {
     fn to_string(&self) -> String {
         match self {
             Instr::Mov(s, d) => format!("mov {}, {}", s.to_string(), d.to_string()),
+
             Instr::Add(s, d) => format!("add {}, {}", s.to_string(), d.to_string()),
             Instr::Sub(s, d) => format!("sub {}, {}", s.to_string(), d.to_string()),
             Instr::IMul(s, d) => format!("imul {}, {}", s.to_string(), d.to_string()),
+
             Instr::Neg(s) => format!("neg {}", s.to_string()),
+
             Instr::Cmp(s, d) => format!("cmp {}, {}", s.to_string(), d.to_string()),
+
             Instr::Je(s) => format!("je {}", s),
             Instr::Jmp(s) => format!("jmp {}", s),
+
+            Instr::Sete(r) => format!("sete {}", r.to_string()),
+            Instr::Setne(r) => format!("sete {}", r.to_string()),
+            Instr::Setle(r) => format!("setle {}", r.to_string()),
+            Instr::Setge(r) => format!("setge {}", r.to_string()),
+            Instr::Setl(r) => format!("setl {}", r.to_string()),
+            Instr::Setg(r) => format!("setg {}", r.to_string()),
+
             Instr::Label(s) => format!("{}:", s),
             Instr::Syscall => "syscall".to_string(),
         }

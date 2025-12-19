@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use lalrpop_util::lalrpop_mod;
 
 use crate::{
@@ -53,6 +51,7 @@ impl AST {
     fn anf_c(&self, expr: ExprRef, tree: &mut FlatTree<AnfExpr>) -> ExprRef {
         match self.tree.get(expr).unwrap() {
             Expr::Num(n) => tree.add(AnfExpr::Imm(ImmExpr::Num(*n))),
+            Expr::Bool(b) => tree.add(AnfExpr::Imm(ImmExpr::Bool(*b))),
             Expr::Var(n) => tree.add(AnfExpr::Imm(ImmExpr::Var(n.clone()))),
             Expr::Neg(expr) => {
                 let result = self.anf_c(*expr, tree);
@@ -93,7 +92,21 @@ impl AST {
 
                 tree.add(AnfExpr::Let(lhs_name, left, if1))
             }
-            _ => todo!(),
+            Expr::Cmp(cmp, lhs, rhs) => {
+                let left = self.anf_c(*lhs, tree);
+                let right = self.anf_c(*rhs, tree);
+
+                let lhs_name = format!("CmpLHS{}", left.0);
+                let rhs_name = format!("CmpRHS{}", right.0);
+                let result = tree.add(AnfExpr::Cmp(
+                    *cmp,
+                    ImmExpr::Var(lhs_name.clone()),
+                    ImmExpr::Var(rhs_name.clone()),
+                ));
+                let body = tree.add(AnfExpr::Let(rhs_name, right, result));
+
+                tree.add(AnfExpr::Let(lhs_name, left, body))
+            }
         }
     }
 
@@ -102,13 +115,6 @@ impl AST {
             Expr::Num(n) => ImmExpr::Num(*n),
             Expr::Var(s) => ImmExpr::Var(s.clone()),
             _ => panic!(),
-        }
-    }
-
-    fn subst(&self, expr: ExprRef, env: &HashMap<String, ExprRef>) -> ExprRef {
-        match self.tree.get(expr).unwrap() {
-            Expr::Var(var) => *env.get(var).unwrap(),
-            _ => expr,
         }
     }
 

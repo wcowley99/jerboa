@@ -21,6 +21,7 @@ pub Program: ExprRef = {
 
 Comparison: ExprRef = {
     <l: Expr> "==" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Eq, l, r)),
+    <l: Expr> "!=" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Neq, l, r)),
     <l: Expr> "<=" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Leq, l, r)),
     <l: Expr> ">=" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Geq, l, r)),
     <l: Expr> "<" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Lt, l, r)),
@@ -42,8 +43,8 @@ Factor: ExprRef = {
 
 pub Term: ExprRef = {
     "(" <Expr> ")",
-    "let" <id: Name> "=" <assn: Expr> "in" "{" <body: Expr> "}" => arena.add(Expr::Let(id, assn, body)),
-    "if" <cond: Expr> "then" "{" <body: Expr> "}" "else" "{" <branch: Expr> "}" => arena.add(Expr::If(cond, body, branch)),
+    "let" <id: Name> "=" <assn: Program> "in" "{" <body: Program> "}" => arena.add(Expr::Let(id, assn, body)),
+    "if" <cond: Program> "then" "{" <body: Program> "}" "else" "{" <branch: Program> "}" => arena.add(Expr::If(cond, body, branch)),
     "-" <t: Term> => arena.add(Expr::Neg(t)),
     Num,
     Bool,

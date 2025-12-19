@@ -1,14 +1,14 @@
 use std::fmt::Display;
 
 use crate::{
-    common::{BinOp, ExprRef, FlatTree},
+    common::{BinOp, CmpOp, ExprRef, FlatTree},
     instr::{Instr, Operand, Reg},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImmExpr {
     Num(i64),
-
+    Bool(bool),
     Var(String),
 }
 
@@ -16,6 +16,10 @@ impl ImmExpr {
     pub fn to_asm(&self, env: &Vec<String>) -> Instr {
         match self {
             ImmExpr::Num(val) => Instr::mov(*val, Reg::RAX),
+            ImmExpr::Bool(b) => {
+                let repr = if *b { 1 } else { 0 };
+                Instr::mov(repr, Reg::RAX)
+            }
             ImmExpr::Var(var) => Instr::mov(
                 Operand::local(env.iter().rposition(|x| x == var).unwrap()),
                 Reg::RAX,
@@ -28,6 +32,7 @@ impl Display for ImmExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ImmExpr::Num(n) => write!(f, "{}", n),
+            ImmExpr::Bool(b) => write!(f, "{}", b),
             ImmExpr::Var(s) => write!(f, "{}", s),
         }
     }
@@ -38,6 +43,7 @@ pub enum AnfExpr {
     Imm(ImmExpr),
     Neg(ExprRef),
     Bin(BinOp, ImmExpr, ImmExpr),
+    Cmp(CmpOp, ImmExpr, ImmExpr),
     Let(String, ExprRef, ExprRef),
     If(ImmExpr, ExprRef, ExprRef),
 }
@@ -54,47 +60,6 @@ impl AnfTree {
     }
     fn lookup(&self, var: &String, env: &Vec<(String, i64)>) -> Option<i64> {
         env.iter().rfind(|(s, _)| s == var).map(|(_, n)| *n)
-    }
-
-    fn eval_imm(&self, expr: &ImmExpr, env: &Vec<(String, i64)>) -> Option<i64> {
-        match expr {
-            ImmExpr::Num(n) => Some(*n),
-            ImmExpr::Var(var) => self.lookup(var, env),
-        }
-    }
-
-    fn eval(&self, expr: ExprRef, mut env: &mut Vec<(String, i64)>) -> Option<i64> {
-        match self.tree.get(expr).unwrap() {
-            AnfExpr::Imm(e) => self.eval_imm(e, env),
-            AnfExpr::Neg(expr) => Some(-self.eval(*expr, env)?),
-            AnfExpr::Let(var, assn, body) => {
-                let assn_result = self.eval(*assn, env)?;
-                env.push((var.clone(), assn_result));
-
-                let result = self.eval(*body, &mut env);
-                env.pop();
-
-                result
-            }
-            AnfExpr::Bin(op, lhs, rhs) => Some(match op {
-                BinOp::Add => self.eval_imm(lhs, env)? + self.eval_imm(rhs, env)?,
-                BinOp::Sub => self.eval_imm(lhs, env)? - self.eval_imm(rhs, env)?,
-                BinOp::Mul => self.eval_imm(lhs, env)? * self.eval_imm(rhs, env)?,
-                BinOp::Div => self.eval_imm(lhs, env)? / self.eval_imm(rhs, env)?,
-            }),
-            AnfExpr::If(cond, body, branch) => {
-                if self.eval_imm(cond, env)? != 0 {
-                    self.eval(*body, env)
-                } else {
-                    self.eval(*branch, env)
-                }
-            }
-        }
-    }
-
-    pub fn interp(&self) -> Option<i64> {
-        let mut env = Vec::new();
-        self.eval(self.entrypoint, &mut env)
     }
 
     pub fn compile(&self) -> Vec<Instr> {
@@ -142,6 +107,24 @@ impl AnfTree {
                     op_instr,
                 ]
             }
+            AnfExpr::Cmp(cmp, lhs, rhs) => {
+                let op_instr = match cmp {
+                    CmpOp::Eq => Instr::Sete(Reg::AL),
+                    CmpOp::Neq => Instr::Setne(Reg::AL),
+                    CmpOp::Leq => Instr::Setle(Reg::AL),
+                    CmpOp::Geq => Instr::Setge(Reg::AL),
+                    CmpOp::Lt => Instr::Setl(Reg::AL),
+                    CmpOp::Gt => Instr::Setg(Reg::AL),
+                };
+
+                vec![
+                    rhs.to_asm(env),
+                    Instr::mov(Reg::RAX, Reg::RCX),
+                    lhs.to_asm(env),
+                    Instr::cmp(Reg::RCX, Reg::RAX),
+                    op_instr,
+                ]
+            }
             AnfExpr::If(cond, body, branch) => {
                 let label_true = format!("if_zero{}", expr.0);
                 let label_false = format!("if_nz{}", expr.0);
@@ -149,7 +132,7 @@ impl AnfTree {
                 [
                     vec![
                         cond.to_asm(env),
-                        Instr::cmp(0, Reg::RAX),
+                        Instr::cmp(0, Reg::AL),
                         Instr::Je(label_false.clone()),
                         Instr::label(label_true),
                     ],
@@ -176,6 +159,9 @@ impl AnfTree {
             }
             AnfExpr::Bin(op, lhs, rhs) => {
                 print!("{} {} {}", op, lhs, rhs)
+            }
+            AnfExpr::Cmp(cmp, lhs, rhs) => {
+                print!("{} {} {}", cmp, lhs, rhs)
             }
             AnfExpr::Let(var, assn, body) => {
                 print!("let {} = ", var);
