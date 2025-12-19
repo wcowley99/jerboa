@@ -32,7 +32,10 @@ fn compile<S: Into<String>>(input: S) -> String {
     ];
 
     let ast = AST::from(&input.into());
-    let anf = ast.to_anf();
+    let renamed = ast.rename().unwrap();
+    let anf = renamed.to_anf();
+    anf.print();
+
     let compiled = anf.compile();
 
     let prog = [compiled, envoi].concat();

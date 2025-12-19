@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::{
     common::{BinOp, ExprRef, FlatTree},
     instr::{Instr, Operand, Reg},
@@ -6,6 +8,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImmExpr {
     Num(i64),
+
     Var(String),
 }
 
@@ -17,6 +20,15 @@ impl ImmExpr {
                 Operand::local(env.iter().rposition(|x| x == var).unwrap()),
                 Reg::RAX,
             ),
+        }
+    }
+}
+
+impl Display for ImmExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ImmExpr::Num(n) => write!(f, "{}", n),
+            ImmExpr::Var(s) => write!(f, "{}", s),
         }
     }
 }
@@ -147,6 +159,35 @@ impl AnfTree {
                     vec![Instr::label(label_done)],
                 ]
                 .concat()
+            }
+        }
+    }
+
+    pub fn print(&self) {
+        self.print_helper(self.entrypoint, 0);
+    }
+
+    fn print_helper(&self, expr: ExprRef, depth: usize) {
+        match self.tree.get(expr).unwrap() {
+            AnfExpr::Imm(e) => print!("{}", e),
+            AnfExpr::Neg(e) => {
+                print!("-");
+                self.print_helper(*e, depth);
+            }
+            AnfExpr::Bin(op, lhs, rhs) => {
+                print!("{} {} {}", op, lhs, rhs)
+            }
+            AnfExpr::Let(var, assn, body) => {
+                print!("let {} = ", var);
+                self.print_helper(*assn, depth);
+                println!("in");
+                self.print_helper(*body, depth);
+            }
+            AnfExpr::If(cond, body, branch) => {
+                println!("if {}:", cond);
+                self.print_helper(*body, depth);
+                println!("else:");
+                self.print_helper(*branch, depth);
             }
         }
     }

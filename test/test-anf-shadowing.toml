@@ -1,0 +1,10 @@
+name = "anf doesn't cause accidental shadowing"
+
+[input]
+program = """
+(let x = 1 in {x}) + (let x = 2 in {x})
+"""
+
+[expected]
+exit_code = 3
+stdout = ""

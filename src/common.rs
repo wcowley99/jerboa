@@ -1,9 +1,50 @@
+use std::fmt::Display;
+
+pub enum Value {
+    I64(i64),
+    Bool(bool),
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BinOp {
     Add,
     Sub,
     Mul,
     Div,
+}
+
+impl Display for BinOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let sym = match self {
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+        };
+        write!(f, "{}", sym)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum CmpOp {
+    Eq,
+    Leq,
+    Geq,
+    Lt,
+    Gt,
+}
+
+impl Display for CmpOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let sym = match self {
+            CmpOp::Eq => "==",
+            CmpOp::Leq => "<=",
+            CmpOp::Geq => ">=",
+            CmpOp::Lt => "<",
+            CmpOp::Gt => ">",
+        };
+        write!(f, "{}", sym)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Ord)]
