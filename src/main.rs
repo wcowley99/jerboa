@@ -19,7 +19,8 @@ mod common;
 mod instr;
 
 fn compile<S: Into<String>>(input: S) -> String {
-    let preamble = ".text \n\
+    let preamble = ".extern max \n\n\
+        .text \n\
         .global _start \n\
         \n\
         _start:"
@@ -83,7 +84,18 @@ fn main() -> io::Result<()> {
             child.wait_with_output()
         })?;
 
-    Command::new("ld").args([objfile, "-o", "a.out"]).output()?;
+    Command::new("ld")
+        .args([
+            objfile,
+            "-o",
+            "a.out",
+            "-dynamic-linker",
+            "/lib64/ld-linux-x86-64.so.2",
+            "-L.",
+            "-l:test_lib.so",
+            "-lc",
+        ])
+        .output()?;
 
     Command::new("rm").arg(objfile).output()?;
 

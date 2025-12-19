@@ -41,19 +41,29 @@ Factor: ExprRef = {
   Term,
 };
 
-pub Term: ExprRef = {
+Term: ExprRef = {
     "(" <Expr> ")",
     "let" <id: Name> "=" <assn: Program> "in" "{" <body: Program> "}" => arena.add(Expr::Let(id, assn, body)),
     "if" <cond: Program> "then" "{" <body: Program> "}" "else" "{" <branch: Program> "}" => arena.add(Expr::If(cond, body, branch)),
     "-" <t: Term> => arena.add(Expr::Neg(t)),
-    Num,
-    Bool,
-    Var,
+    <f: Name> "(" <args: (Program ",")*> <e: Program?> ")" => {
+        let mut args = args.into_iter().map(|(e, _)| e).collect::<Vec<_>>();
+        if let Some(e) = e { args.push(e); }
+        arena.add(Expr::FnCall(f, args))
+    },
+
+    Imm,
 };
 
 Num: ExprRef = {
     r"[0-9]+" => arena.add(Expr::Num(i64::from_str(<>).unwrap())),
 };
+
+Imm: ExprRef = {
+    Num,
+    Bool,
+    Var,
+}
 
 Bool: ExprRef = {
     "true" => arena.add(Expr::Bool(true)),

@@ -1,6 +1,0 @@
-<expr> ::= 
-         | number
-         | id
-         | "let" id "=" <expr> "in" <expr>
-         | "inc" "(" <expr> ")"
-         | "if" <expr> "then" <expr> "else" <expr>

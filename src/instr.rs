@@ -100,7 +100,7 @@ impl ToString for Operand {
 
 impl Operand {
     pub fn local(index: usize) -> Operand {
-        Operand::Mem(Some(-8 * (index as i64)), Some(Reg::RSP), None, None)
+        Operand::Mem(Some(-8 * (index + 1) as i64), Some(Reg::RSP), None, None)
     }
 }
 
@@ -128,6 +128,8 @@ pub enum Instr {
     Setg(Reg),
 
     Label(String),
+    Call(String),
+    Push(Operand),
     Syscall,
 }
 
@@ -148,13 +150,16 @@ impl ToString for Instr {
             Instr::Jmp(s) => format!("jmp {}", s),
 
             Instr::Sete(r) => format!("sete {}", r.to_string()),
-            Instr::Setne(r) => format!("sete {}", r.to_string()),
+            Instr::Setne(r) => format!("setne {}", r.to_string()),
             Instr::Setle(r) => format!("setle {}", r.to_string()),
             Instr::Setge(r) => format!("setge {}", r.to_string()),
             Instr::Setl(r) => format!("setl {}", r.to_string()),
             Instr::Setg(r) => format!("setg {}", r.to_string()),
 
             Instr::Label(s) => format!("{}:", s),
+            Instr::Call(s) => format!("call {}", s),
+            Instr::Push(s) => format!("push {}", s.to_string()),
+
             Instr::Syscall => "syscall".to_string(),
         }
     }

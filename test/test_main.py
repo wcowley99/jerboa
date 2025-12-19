@@ -1,6 +1,7 @@
 import toml
 import glob
 import subprocess
+import os
 
 def compile_and_run(program):
     result = subprocess.run(
@@ -13,9 +14,12 @@ def compile_and_run(program):
     if result.returncode != 0:
         return False
 
+    env = os.environ.copy()
+    env["LD_LIBRARY_PATH"] = "."
     result = subprocess.run(
         ["./a.out"],
         text=True,
+        env=env,
         capture_output=True,
     )
 
@@ -25,16 +29,24 @@ def compile_and_run(program):
 
 
 def validate(expected, result):
-    exit_code = expected["exit_code"]
     validation = True
-    if (exit_code is not None) and (exit_code != result.returncode):
-        print(f"Expected exit_code={exit_code}, found {result.returncode} instead")
-        validation = False
+    if "exit_code" in expected:
+        exit_code = expected["exit_code"]
+        if (exit_code is not None) and (exit_code != result.returncode):
+            print(f"Expected exit_code={exit_code}, found {result.returncode} instead")
+            validation = False
 
-    stdout = expected["stdout"]
-    if (stdout is not None) and (stdout != result.stdout):
-        print(f"Expected the following stdout:\n{stdout}\nFound this instead:\n{result.stdout}")
-        validation = False
+    if "stdout" in expected:
+        stdout = expected["stdout"]
+        if (stdout is not None) and (stdout != result.stdout):
+            print(f"Expected the following stdout:\n{stdout}\nFound this instead:\n{result.stdout}")
+            validation = False
+
+    if "stderr" in expected:
+        stderr = expected["stderr"]
+        if (stderr is not None) and (stderr != result.stderr):
+            print(f"Expected the following stdout:\n{stderr}\nFound this instead:\n{result.stderr}")
+            validation = False
 
     return validation
 

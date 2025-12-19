@@ -13,6 +13,20 @@ pub enum ImmExpr {
 }
 
 impl ImmExpr {
+    fn as_operand(&self, env: &Vec<String>) -> Operand {
+        match self {
+            ImmExpr::Num(n) => Operand::Imm(*n),
+            ImmExpr::Bool(b) => {
+                if *b {
+                    Operand::Imm(1)
+                } else {
+                    Operand::Imm(0)
+                }
+            }
+            ImmExpr::Var(s) => Operand::local(env.iter().rposition(|x| x == s).unwrap()),
+        }
+    }
+
     pub fn to_asm(&self, env: &Vec<String>) -> Instr {
         match self {
             ImmExpr::Num(val) => Instr::mov(*val, Reg::RAX),
@@ -24,6 +38,19 @@ impl ImmExpr {
                 Operand::local(env.iter().rposition(|x| x == var).unwrap()),
                 Reg::RAX,
             ),
+        }
+    }
+
+    pub fn gen_param(&self, param_num: usize, env: &Vec<String>) -> Instr {
+        let loc = self.as_operand(env);
+        match param_num {
+            0 => Instr::mov(loc, Reg::RDI),
+            1 => Instr::mov(loc, Reg::RSI),
+            2 => Instr::mov(loc, Reg::RDX),
+            3 => Instr::mov(loc, Reg::RCX),
+            4 => Instr::mov(loc, Reg::R8),
+            5 => Instr::mov(loc, Reg::R9),
+            _ => Instr::Push(loc),
         }
     }
 }
@@ -46,6 +73,7 @@ pub enum AnfExpr {
     Cmp(CmpOp, ImmExpr, ImmExpr),
     Let(String, ExprRef, ExprRef),
     If(ImmExpr, ExprRef, ExprRef),
+    Fn(String, Vec<ImmExpr>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -143,6 +171,23 @@ impl AnfTree {
                 ]
                 .concat()
             }
+            AnfExpr::Fn(name, args) => {
+                let num_args = args.len();
+                let cleanup_instr = if num_args > 6 {
+                    vec![Instr::add(((num_args - 6) * 8) as i64, Reg::RSP)]
+                } else {
+                    vec![]
+                };
+                [
+                    args.iter()
+                        .enumerate()
+                        .map(|(i, arg)| arg.gen_param(i, &env))
+                        .collect(),
+                    vec![Instr::Call(name.clone())],
+                    cleanup_instr,
+                ]
+                .concat()
+            }
         }
     }
 
@@ -174,6 +219,16 @@ impl AnfTree {
                 self.print_helper(*body, depth);
                 println!("else:");
                 self.print_helper(*branch, depth);
+            }
+            AnfExpr::Fn(name, args) => {
+                print!("fn {}(", name);
+                for (idx, arg) in args.iter().enumerate() {
+                    print!("{}", arg);
+                    if idx < args.len() - 1 {
+                        print!(", ");
+                    }
+                }
+                print!(")");
             }
         }
     }

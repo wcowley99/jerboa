@@ -1,0 +1,12 @@
+name = "invoke functions from dynamic library"
+
+[input]
+program = """
+max(5+5, 9)
+"""
+
+[expected]
+exit_code = 10
+stderr = """
+~ max(10, 9) -> 10
+"""
