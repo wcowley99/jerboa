@@ -82,34 +82,36 @@ impl AST {
                 tree.add(AnfExpr::Let(cond_name, cond, if_expr))
             }
             Expr::Bin(op, lhs, rhs) => {
-                let left = self.anf_c(*lhs, tree);
-                let right = self.anf_c(*rhs, tree);
+                let (left, left_context) = self.anf_i(*lhs, tree);
+                let (right, right_context) = self.anf_i(*rhs, tree);
 
-                let lhs_name = format!("BinaryLHS{}", left.0);
-                let rhs_name = format!("BinaryRHS{}", right.0);
-                let result = tree.add(AnfExpr::Bin(
-                    *op,
-                    ImmExpr::Var(lhs_name.clone()),
-                    ImmExpr::Var(rhs_name.clone()),
-                ));
-                let if1 = tree.add(AnfExpr::Let(rhs_name, right, result));
+                let mut result = tree.add(AnfExpr::Bin(*op, left, right));
 
-                tree.add(AnfExpr::Let(lhs_name, left, if1))
+                if let Some((new_arg, context)) = right_context {
+                    result = tree.add(AnfExpr::Let(new_arg, context, result));
+                }
+
+                if let Some((new_arg, context)) = left_context {
+                    result = tree.add(AnfExpr::Let(new_arg, context, result));
+                }
+
+                result
             }
             Expr::Cmp(cmp, lhs, rhs) => {
-                let left = self.anf_c(*lhs, tree);
-                let right = self.anf_c(*rhs, tree);
+                let (left, left_context) = self.anf_i(*lhs, tree);
+                let (right, right_context) = self.anf_i(*rhs, tree);
 
-                let lhs_name = format!("CmpLHS{}", left.0);
-                let rhs_name = format!("CmpRHS{}", right.0);
-                let result = tree.add(AnfExpr::Cmp(
-                    *cmp,
-                    ImmExpr::Var(lhs_name.clone()),
-                    ImmExpr::Var(rhs_name.clone()),
-                ));
-                let body = tree.add(AnfExpr::Let(rhs_name, right, result));
+                let mut result = tree.add(AnfExpr::Cmp(*cmp, left, right));
 
-                tree.add(AnfExpr::Let(lhs_name, left, body))
+                if let Some((new_arg, context)) = right_context {
+                    result = tree.add(AnfExpr::Let(new_arg, context, result));
+                }
+
+                if let Some((new_arg, context)) = left_context {
+                    result = tree.add(AnfExpr::Let(new_arg, context, result));
+                }
+
+                result
             }
             Expr::FnCall(name, args) => {
                 let mut lets = Vec::new();

@@ -173,11 +173,13 @@ impl AnfTree {
             }
             AnfExpr::Fn(name, args) => {
                 let num_args = args.len();
+
                 let cleanup_instr = if num_args > 6 {
                     vec![Instr::add(((num_args - 6) * 8) as i64, Reg::RSP)]
                 } else {
                     vec![]
                 };
+
                 [
                     args.iter()
                         .enumerate()
