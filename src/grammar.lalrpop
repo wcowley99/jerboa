@@ -1,50 +1,38 @@
 use std::str::FromStr;
-use crate::common::{BinOp, CmpOp, ExprRef, FlatTree};
+use crate::common::{BinOp, ExprRef, FlatTree};
 use crate::ast::Expr;
 
 grammar(arena: &mut FlatTree<Expr>);
 
-/* match {
-    "+",
-    "*",
-    "(",
-    ")",
-    r"[0-9]+",
-    r"[a-zA-Z]+",
-
-    r"\s*" => {},
-} */
-
 pub Program: ExprRef = {
-    Comparison,
-}
-
-Comparison: ExprRef = {
-    <l: Expr> "==" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Eq, l, r)),
-    <l: Expr> "!=" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Neq, l, r)),
-    <l: Expr> "<=" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Leq, l, r)),
-    <l: Expr> ">=" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Geq, l, r)),
-    <l: Expr> "<" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Lt, l, r)),
-    <l: Expr> ">" <r: Expr> => arena.add(Expr::Cmp(CmpOp::Gt, l, r)),
     Expr,
 }
 
 Expr: ExprRef = {
-    <l:Expr> "+" <r:Factor> => arena.add(Expr::Bin(BinOp::Add, l, r)),
-    <l:Expr> "-" <r:Factor> => arena.add(Expr::Bin(BinOp::Sub, l, r)),
-    Factor,
-};
+    #[precedence(level="0")] // Highest precedence
+    Term,
 
-Factor: ExprRef = {
-  <l:Factor> "*" <r:Term> => arena.add(Expr::Bin(BinOp::Mul, l, r)),
-  <l:Factor> "/" <r:Term> => arena.add(Expr::Bin(BinOp::Div, l, r)),
-  Term,
+    #[precedence(level="1")] #[assoc(side="left")]
+    <l:Expr> "*" <r:Expr> => arena.add(Expr::Bin(BinOp::Mul, l, r)),
+    <l:Expr> "/" <r:Expr> => arena.add(Expr::Bin(BinOp::Div, l, r)),
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    <l:Expr> "+" <r:Expr> => arena.add(Expr::Bin(BinOp::Add, l, r)),
+    <l:Expr> "-" <r:Expr> => arena.add(Expr::Bin(BinOp::Sub, l, r)),
+
+    #[precedence(level="3")] #[assoc(side="left")]
+    <l: Expr> "==" <r: Expr> => arena.add(Expr::Bin(BinOp::Eq, l, r)),
+    <l: Expr> "!=" <r: Expr> => arena.add(Expr::Bin(BinOp::Neq, l, r)),
+    <l: Expr> "<=" <r: Expr> => arena.add(Expr::Bin(BinOp::Leq, l, r)),
+    <l: Expr> ">=" <r: Expr> => arena.add(Expr::Bin(BinOp::Geq, l, r)),
+    <l: Expr> "<" <r: Expr> => arena.add(Expr::Bin(BinOp::Lt, l, r)),
+    <l: Expr> ">" <r: Expr> => arena.add(Expr::Bin(BinOp::Gt, l, r)),
 };
 
 Term: ExprRef = {
     "(" <Expr> ")",
-    "let" <id: Name> "=" <assn: Program> "in" "{" <body: Program> "}" => arena.add(Expr::Let(id, assn, body)),
-    "if" <cond: Program> "then" "{" <body: Program> "}" "else" "{" <branch: Program> "}" => arena.add(Expr::If(cond, body, branch)),
+    "let" <id: Name> "=" <assn: Expr> "in" "{" <body: Expr> "}" => arena.add(Expr::Let(id, assn, body)),
+    "if" <cond: Expr> "then" "{" <body: Expr> "}" "else" "{" <branch: Expr> "}" => arena.add(Expr::If(cond, body, branch)),
     "-" <t: Term> => arena.add(Expr::Neg(t)),
     <f: Name> "(" <args: (Program ",")*> <e: Program?> ")" => {
         let mut args = args.into_iter().map(|(e, _)| e).collect::<Vec<_>>();

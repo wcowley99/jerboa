@@ -1,10 +1,8 @@
-use std::env::Args;
-
 use lalrpop_util::lalrpop_mod;
 
 use crate::{
     anf::{AnfExpr, AnfTree, ImmExpr},
-    common::{BinOp, CmpOp, ExprRef, FlatTree},
+    common::{BinOp, ExprRef, FlatTree},
 };
 lalrpop_mod!(pub grammar);
 
@@ -18,7 +16,6 @@ pub enum Expr {
     Bin(BinOp, ExprRef, ExprRef),
     Let(String, ExprRef, ExprRef),
     If(ExprRef, ExprRef, ExprRef),
-    Cmp(CmpOp, ExprRef, ExprRef),
 
     FnCall(String, Vec<ExprRef>),
 }
@@ -84,22 +81,6 @@ impl AST {
                 let (right, right_context) = self.anf_i(*rhs, tree);
 
                 let mut result = tree.add(AnfExpr::Bin(*op, left, right));
-
-                if let Some((new_arg, context)) = right_context {
-                    result = tree.add(AnfExpr::Let(new_arg, context, result));
-                }
-
-                if let Some((new_arg, context)) = left_context {
-                    result = tree.add(AnfExpr::Let(new_arg, context, result));
-                }
-
-                result
-            }
-            Expr::Cmp(cmp, lhs, rhs) => {
-                let (left, left_context) = self.anf_i(*lhs, tree);
-                let (right, right_context) = self.anf_i(*rhs, tree);
-
-                let mut result = tree.add(AnfExpr::Cmp(*cmp, left, right));
 
                 if let Some((new_arg, context)) = right_context {
                     result = tree.add(AnfExpr::Let(new_arg, context, result));
@@ -214,12 +195,6 @@ impl AST {
                 let branch_expr = self.rename_helper(renamed, *branch, env, count)?;
 
                 renamed.add(Expr::If(cond_expr, body_expr, branch_expr))
-            }
-            Expr::Cmp(cmp, lhs, rhs) => {
-                let lhs_renamed = self.rename_helper(renamed, *lhs, env, count)?;
-                let rhs_renamed = self.rename_helper(renamed, *rhs, env, count)?;
-
-                renamed.add(Expr::Cmp(*cmp, lhs_renamed, rhs_renamed))
             }
             Expr::FnCall(s, args) => {
                 let args = args

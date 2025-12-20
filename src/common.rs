@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use crate::instr::{Instr, Reg};
+
 pub enum Value {
     I64(i64),
     Bool(bool),
@@ -11,6 +13,31 @@ pub enum BinOp {
     Sub,
     Mul,
     Div,
+    Eq,
+    Neq,
+    Leq,
+    Geq,
+    Lt,
+    Gt,
+}
+
+impl BinOp {
+    pub fn to_asm(&self) -> Vec<Instr> {
+        let cmp = Instr::cmp(Reg::RCX, Reg::RAX);
+        match self {
+            BinOp::Add => vec![Instr::add(Reg::RCX, Reg::RAX)],
+            BinOp::Sub => vec![Instr::sub(Reg::RCX, Reg::RAX)],
+            BinOp::Mul => vec![Instr::imul(Reg::RCX, Reg::RAX)],
+            BinOp::Div => todo!("Divide not implemented"),
+
+            BinOp::Eq => vec![cmp, Instr::Sete(Reg::AL)],
+            BinOp::Neq => vec![cmp, Instr::Setne(Reg::AL)],
+            BinOp::Leq => vec![cmp, Instr::Setle(Reg::AL)],
+            BinOp::Geq => vec![cmp, Instr::Setge(Reg::AL)],
+            BinOp::Lt => vec![cmp, Instr::Setl(Reg::AL)],
+            BinOp::Gt => vec![cmp, Instr::Setg(Reg::AL)],
+        }
+    }
 }
 
 impl Display for BinOp {
@@ -20,30 +47,12 @@ impl Display for BinOp {
             BinOp::Sub => "-",
             BinOp::Mul => "*",
             BinOp::Div => "/",
-        };
-        write!(f, "{}", sym)
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum CmpOp {
-    Eq,
-    Neq,
-    Leq,
-    Geq,
-    Lt,
-    Gt,
-}
-
-impl Display for CmpOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let sym = match self {
-            CmpOp::Eq => "==",
-            CmpOp::Neq => "!=",
-            CmpOp::Leq => "<=",
-            CmpOp::Geq => ">=",
-            CmpOp::Lt => "<",
-            CmpOp::Gt => ">",
+            BinOp::Eq => "==",
+            BinOp::Neq => "!=",
+            BinOp::Leq => "<=",
+            BinOp::Geq => ">=",
+            BinOp::Lt => "<",
+            BinOp::Gt => ">",
         };
         write!(f, "{}", sym)
     }

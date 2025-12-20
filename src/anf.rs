@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    common::{BinOp, CmpOp, ExprRef, FlatTree},
+    common::{BinOp, ExprRef, FlatTree},
     instr::{Instr, Operand, Reg},
 };
 
@@ -70,7 +70,6 @@ pub enum AnfExpr {
     Imm(ImmExpr),
     Neg(ExprRef),
     Bin(BinOp, ImmExpr, ImmExpr),
-    Cmp(CmpOp, ImmExpr, ImmExpr),
     Let(String, ExprRef, ExprRef),
     If(ImmExpr, ExprRef, ExprRef),
     Fn(String, Vec<ImmExpr>),
@@ -121,37 +120,17 @@ impl AnfTree {
                 prog
             }
             AnfExpr::Bin(op, lhs, rhs) => {
-                let op_instr = match op {
-                    BinOp::Add => Instr::add(Reg::RCX, Reg::RAX),
-                    BinOp::Sub => Instr::sub(Reg::RCX, Reg::RAX),
-                    BinOp::Mul => Instr::imul(Reg::RCX, Reg::RAX),
-                    BinOp::Div => todo!("Divide not implemented"),
-                };
+                let op_instrs = op.to_asm();
 
-                vec![
-                    rhs.to_asm(env),
-                    Instr::mov(Reg::RAX, Reg::RCX),
-                    lhs.to_asm(env),
-                    op_instr,
+                [
+                    vec![
+                        rhs.to_asm(env),
+                        Instr::mov(Reg::RAX, Reg::RCX),
+                        lhs.to_asm(env),
+                    ],
+                    op_instrs,
                 ]
-            }
-            AnfExpr::Cmp(cmp, lhs, rhs) => {
-                let op_instr = match cmp {
-                    CmpOp::Eq => Instr::Sete(Reg::AL),
-                    CmpOp::Neq => Instr::Setne(Reg::AL),
-                    CmpOp::Leq => Instr::Setle(Reg::AL),
-                    CmpOp::Geq => Instr::Setge(Reg::AL),
-                    CmpOp::Lt => Instr::Setl(Reg::AL),
-                    CmpOp::Gt => Instr::Setg(Reg::AL),
-                };
-
-                vec![
-                    rhs.to_asm(env),
-                    Instr::mov(Reg::RAX, Reg::RCX),
-                    lhs.to_asm(env),
-                    Instr::cmp(Reg::RCX, Reg::RAX),
-                    op_instr,
-                ]
+                .concat()
             }
             AnfExpr::If(cond, body, branch) => {
                 let label_true = format!("if_zero{}", expr.0);
@@ -206,9 +185,6 @@ impl AnfTree {
             }
             AnfExpr::Bin(op, lhs, rhs) => {
                 print!("{} {} {}", op, lhs, rhs)
-            }
-            AnfExpr::Cmp(cmp, lhs, rhs) => {
-                print!("{} {} {}", cmp, lhs, rhs)
             }
             AnfExpr::Let(var, assn, body) => {
                 print!("let {} = ", var);
