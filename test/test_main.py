@@ -2,20 +2,38 @@ import toml
 import glob
 import subprocess
 import os
+from pathlib import Path
 
-def compile_and_run(program):
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+RESET = "\033[0m"
+
+def compile_program(program: str, compiler_path="../target/debug/jerboa") -> bool:
+    """
+    Run the compiler to compile the given program.
+    """
     result = subprocess.run(
-        ["../target/debug/jerboa", "-v"],
+        [compiler_path],
         input=program,
         text=True,
         capture_output=True,
     )
 
     if result.returncode != 0:
+        print(f"{RED}Compilation failed:{RESET}\n {result.stderr}")
         return False
 
+    return True
+
+
+def run_executable(executable="./a.out") -> subprocess.CompletedProcess:
+    """
+    Run the executable and capture output.
+    """
     env = os.environ.copy()
-    env["LD_LIBRARY_PATH"] = "."
+    env["LD_LIBRARY_PATH"] = str(Path(".").resolve())
+
     result = subprocess.run(
         ["./a.out"],
         text=True,
@@ -23,64 +41,77 @@ def compile_and_run(program):
         capture_output=True,
     )
 
-    subprocess.run(["rm", "a.out"])
+    # cleanup
+    try:
+        Path(executable).unlink()
+    except FileNotFoundError:
+        pass
 
     return result
 
 
-def validate(expected, result):
-    validation = True
+def validate_result(expected: dict, result: subprocess.CompletedProcess) -> bool:
+    """
+    Validate the actual result against the expected output.
+    """
+    success = True
+
     if "exit_code" in expected:
-        exit_code = expected["exit_code"]
-        if (exit_code is not None) and (exit_code != result.returncode):
-            print(f"Expected exit_code={exit_code}, found {result.returncode} instead")
-            validation = False
+        expected_exit = expected["exit_code"]
+        if expected_exit is not None and expected_exit != result.returncode:
+            print(f"Exit code mismatch: expected {expected_exit}, found {result.returncode}")
+            success = False
 
     if "stdout" in expected:
-        stdout = expected["stdout"]
-        if (stdout is not None) and (stdout != result.stdout):
-            print(f"Expected the following stdout:\n{stdout}\nFound this instead:\n{result.stdout}")
-            validation = False
+        expected_stdout = expected["stdout"]
+        if expected_stdout is not None and expected_stdout != result.stdout:
+            print(f"Stdout mismatch:\nExpected\n{expected_stdout}\nFound\n{result.stdout}")
+            success = False
 
     if "stderr" in expected:
-        stderr = expected["stderr"]
-        if (stderr is not None) and (stderr != result.stderr):
-            print(f"Expected the following stdout:\n{stderr}\nFound this instead:\n{result.stderr}")
-            validation = False
+        expected_stderr = expected["stderr"]
+        if expected_stderr is not None and expected_stderr != result.stderr:
+            print(f"Stderr mismatch:\nExpected\n{expected_stderr}\nFound\n{result.stderr}")
+            success = False
 
-    return validation
+    return success
 
-def test(filename):
-    data = toml.load(filename)
 
+def run_test(filepath: Path) -> bool:
+    """
+    Run a single test described in a TOML file.
+    """
+    data = toml.load(filepath)
     program = data["input"]["program"]
+    test_name = data["name"]
 
-    prog_result = compile_and_run(program)
+    print(f"Running test: {test_name} ({filepath})")
 
-    if prog_result == False:
-        test_pass = False
-        result = "Compilation Failed"
-    elif data["expected"] is None:
-        print("No expected outputs provided")
-        test_pass = False
-        result = "Success"
-    else:
-        test_pass = validate(data["expected"], prog_result)
-        result = "Success" if test_pass else "Failure"
+    if not compile_program(program):
+        print(f"Result: {RED}Compilation Failed{RESET}")
+        return False
 
-    print(f"Testing {data['name']} ({filename}) .......... {result}")
+    if not data.get("expected"):
+        print(f"{YELLOW}No expected outputs provided{RESET}")
+        return False
 
-    return test_pass
+    result = run_executable()
+    success = validate_result(data["expected"], result)
+
+    print("Result:", f"{GREEN}Success{RESET}" if success else f"{RED}Failure{RESET}")
+    print("-" * 60)
+
+    return True
 
 
-tests = glob.glob("./*.toml")
+def main():
+    test_files = list(Path(".").glob("*.toml"))
+    total = len(test_files)
+    passed = sum(run_test(f) for f in test_files)
 
-total = 0
-success = 0
-for file in tests:
-    total += 1
-    if test(file):
-        success += 1
+    overall = f"{GREEN}Success{RESET}" if total == passed else f"{RED}Failure{RESET}"
+    print(f"Result: {overall}. {passed} passed; {total - passed} failed.")
 
-result = "Success" if total == success else "Failure"
-print(f"testing result: {result}. {success} passed; {total - success} failed.")
+
+if __name__ == "__main__":
+    main()
