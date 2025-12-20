@@ -67,19 +67,17 @@ impl AST {
                 tree.add(AnfExpr::Let(var.clone(), assn_anf, body_anf))
             }
             Expr::If(cond, body, branch) => {
-                let cond = self.anf_c(*cond, tree);
+                let (cond, context) = self.anf_i(*cond, tree);
                 let body_anf = self.anf_c(*body, tree);
                 let branch_anf = self.anf_c(*branch, tree);
 
-                let cond_name = format!("cond_{}", cond.0);
+                let if_expr = tree.add(AnfExpr::If(cond, body_anf, branch_anf));
 
-                let if_expr = tree.add(AnfExpr::If(
-                    ImmExpr::Var(cond_name.clone()),
-                    body_anf,
-                    branch_anf,
-                ));
-
-                tree.add(AnfExpr::Let(cond_name, cond, if_expr))
+                if let Some((var, assn)) = context {
+                    tree.add(AnfExpr::Let(var, assn, if_expr))
+                } else {
+                    if_expr
+                }
             }
             Expr::Bin(op, lhs, rhs) => {
                 let (left, left_context) = self.anf_i(*lhs, tree);
