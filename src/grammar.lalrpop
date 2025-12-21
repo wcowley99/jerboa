@@ -1,11 +1,20 @@
 use std::str::FromStr;
-use crate::common::{BinOp, ExprRef, FlatTree};
+use crate::common::{Args, BinOp, FnDecl, ExprRef, FlatTree};
 use crate::ast::Expr;
 
 grammar(arena: &mut FlatTree<Expr>);
 
-pub Program: ExprRef = {
-    Expr,
+pub Program: (Vec<FnDecl>, ExprRef) = {
+    <fns: Decl*> <e: Expr> => (fns, e),
+}
+
+Decl: FnDecl = {
+    "fn" <n: Name> "(" <args: (Name ",")*> <a: Name?> ")" "{" <e: Expr> "}" => {
+        let mut args = args.into_iter().map(|(arg, _)| arg).collect::<Vec<_>>();
+        if let Some(a) = a { args.push(a); }
+
+        FnDecl::new(n, Args(args), e)
+    }
 }
 
 Expr: ExprRef = {
@@ -34,9 +43,10 @@ Term: ExprRef = {
     "let" <id: Name> "=" <assn: Expr> "in" "{" <body: Expr> "}" => arena.add(Expr::Let(id, assn, body)),
     "if" <cond: Expr> "then" "{" <body: Expr> "}" "else" "{" <branch: Expr> "}" => arena.add(Expr::If(cond, body, branch)),
     "-" <t: Term> => arena.add(Expr::Neg(t)),
-    <f: Name> "(" <args: (Program ",")*> <e: Program?> ")" => {
+    <f: Name> "(" <args: (Expr ",")*> <e: Expr?> ")" => {
         let mut args = args.into_iter().map(|(e, _)| e).collect::<Vec<_>>();
         if let Some(e) = e { args.push(e); }
+
         arena.add(Expr::FnCall(f, args))
     },
 

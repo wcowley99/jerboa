@@ -2,7 +2,7 @@ use lalrpop_util::lalrpop_mod;
 
 use crate::{
     anf::{AnfExpr, AnfTree, ImmExpr},
-    common::{BinOp, ExprRef, FlatTree},
+    common::{Args, BinOp, Env, ExprRef, FlatTree, FnDecl},
 };
 lalrpop_mod!(pub grammar);
 
@@ -29,6 +29,7 @@ impl Expr {
 #[derive(Debug, PartialEq, Eq)]
 pub struct AST {
     tree: FlatTree<Expr>,
+    functions: Vec<FnDecl>,
     entrypoint: ExprRef,
 }
 
@@ -36,17 +37,33 @@ impl AST {
     pub fn from(input: &str) -> Self {
         let mut tree = FlatTree::<Expr>::new();
         let parser = grammar::ProgramParser::new();
-        let entrypoint = parser.parse(&mut tree, input).unwrap();
+        let (functions, entrypoint) = parser.parse(&mut tree, input).unwrap();
 
-        Self { tree, entrypoint }
+        Self {
+            tree,
+            functions,
+            entrypoint,
+        }
     }
 
     pub fn to_anf(&self) -> AnfTree {
         let mut tree = FlatTree::<AnfExpr>::new();
 
+        let functions = self
+            .functions
+            .iter()
+            .map(|decl| {
+                FnDecl::new(
+                    decl.name.clone(),
+                    decl.args.clone(),
+                    self.anf_c(decl.body, &mut tree),
+                )
+            })
+            .collect::<Vec<_>>();
+
         let entrypoint = self.anf_c(self.entrypoint, &mut tree);
 
-        AnfTree::from(tree, entrypoint)
+        AnfTree::from(tree, functions, entrypoint)
     }
 
     fn anf_c(&self, expr: ExprRef, tree: &mut FlatTree<AnfExpr>) -> ExprRef {
@@ -134,13 +151,37 @@ impl AST {
 
     pub fn rename(&self) -> Result<AST, String> {
         let mut renamed = FlatTree::<Expr>::new();
-        let mut env = Vec::new();
         let mut count = 0;
-        let entrypoint = self.rename_helper(&mut renamed, self.entrypoint, &mut env, &mut count);
+
+        let functions = self
+            .functions
+            .iter()
+            .map(|decl| {
+                let mut env = Env::new();
+
+                let new_decl = FnDecl::new(
+                    decl.name.clone(),
+                    decl.args.rename_all(),
+                    self.rename_helper(&mut renamed, decl.body, &mut env, &decl.args, &mut count)
+                        .unwrap(),
+                );
+
+                new_decl
+            })
+            .collect::<Vec<_>>();
+
+        let entrypoint = self.rename_helper(
+            &mut renamed,
+            self.entrypoint,
+            &mut Env::new(),
+            &Args::empty(),
+            &mut count,
+        );
 
         if let Some(e) = entrypoint {
             Ok(AST {
                 tree: renamed,
+                functions,
                 entrypoint: e,
             })
         } else {
@@ -148,61 +189,59 @@ impl AST {
         }
     }
 
-    fn rename_lookup(&self, var: &String, env: &Vec<(String, String)>) -> Option<String> {
-        env.iter()
-            .rfind(|(s, _)| s == var)
-            .map(|(_, renamed)| renamed)
-            .cloned()
+    fn rename_lookup(&self, var: &String, env: &Env, args: &Args) -> Option<String> {
+        env.rename(var).or_else(|| args.rename(var))
     }
 
     fn rename_helper(
         &self,
         mut renamed: &mut FlatTree<Expr>,
         expr: ExprRef,
-        env: &mut Vec<(String, String)>,
+        env: &mut Env,
+        args: &Args,
         mut count: &mut usize,
     ) -> Option<ExprRef> {
         Some(match self.tree.get(expr).unwrap() {
             Expr::Num(n) => renamed.add(Expr::Num(*n)),
             Expr::Bool(b) => renamed.add(Expr::Bool(*b)),
-            Expr::Var(s) => renamed.add(Expr::Var(self.rename_lookup(s, env)?)),
+            Expr::Var(s) => renamed.add(Expr::Var(self.rename_lookup(s, env, args)?)),
             Expr::Neg(e) => {
-                let expr = self.rename_helper(renamed, *e, env, count)?;
+                let expr = self.rename_helper(renamed, *e, env, args, count)?;
 
                 renamed.add(Expr::Neg(expr))
             }
             Expr::Bin(op, lhs, rhs) => {
-                let lhs_renamed = self.rename_helper(renamed, *lhs, env, count)?;
-                let rhs_renamed = self.rename_helper(renamed, *rhs, env, count)?;
+                let lhs_renamed = self.rename_helper(renamed, *lhs, env, args, count)?;
+                let rhs_renamed = self.rename_helper(renamed, *rhs, env, args, count)?;
 
                 renamed.add(Expr::Bin(*op, lhs_renamed, rhs_renamed))
             }
             Expr::Let(s, assn, body) => {
-                let assn_expr = self.rename_helper(&mut renamed, *assn, env, &mut count)?;
+                let assn_expr = self.rename_helper(&mut renamed, *assn, env, args, &mut count)?;
 
-                env.push((s.clone(), format!("x{}", count)));
-                *count += 1;
+                env.push(s.clone());
 
-                let body_expr = self.rename_helper(&mut renamed, *body, env, &mut count)?;
+                let body_expr = self.rename_helper(&mut renamed, *body, env, args, &mut count)?;
 
-                let (_, var) = env.pop()?;
+                let var = env.rename(s)?;
+                env.pop();
 
                 renamed.add(Expr::Let(var, assn_expr, body_expr))
             }
             Expr::If(cond, body, branch) => {
-                let cond_expr = self.rename_helper(renamed, *cond, env, count)?;
-                let body_expr = self.rename_helper(renamed, *body, env, count)?;
-                let branch_expr = self.rename_helper(renamed, *branch, env, count)?;
+                let cond_expr = self.rename_helper(renamed, *cond, env, args, count)?;
+                let body_expr = self.rename_helper(renamed, *body, env, args, count)?;
+                let branch_expr = self.rename_helper(renamed, *branch, env, args, count)?;
 
                 renamed.add(Expr::If(cond_expr, body_expr, branch_expr))
             }
-            Expr::FnCall(s, args) => {
-                let args = args
+            Expr::FnCall(s, params) => {
+                let params = params
                     .iter()
-                    .map(|e| self.rename_helper(renamed, *e, env, count))
+                    .map(|e| self.rename_helper(renamed, *e, env, args, count))
                     .collect::<Option<Vec<_>>>()?;
 
-                renamed.add(Expr::FnCall(s.clone(), args))
+                renamed.add(Expr::FnCall(s.clone(), params))
             }
         })
     }

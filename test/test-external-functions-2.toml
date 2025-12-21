@@ -2,12 +2,12 @@ name = "invoke functions from dynamic library"
 
 [input]
 program = """
-max(max(5+5, 20), let x = 15 in {x + x})
+cmax(cmax(5+5, 20), let x = 15 in {x + x})
 """
 
 [expected]
 exit_code = 30
 stderr = """
-~ max(10, 20) -> 20
-~ max(20, 30) -> 30
+~ cmax(10, 20) -> 20
+~ cmax(20, 30) -> 30
 """

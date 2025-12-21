@@ -1,0 +1,13 @@
+name = "invoke locally defined function"
+
+[input]
+program = """
+fn max(a, b) {
+  if a > b then { a } else { b }
+}
+
+max(5+5, 9)
+"""
+
+[expected]
+exit_code = 10

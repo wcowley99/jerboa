@@ -102,6 +102,18 @@ impl Operand {
     pub fn local(index: usize) -> Operand {
         Operand::Mem(Some(-8 * (index + 1) as i64), Some(Reg::RSP), None, None)
     }
+
+    pub fn arg(index: usize) -> Operand {
+        match index {
+            0 => Reg::RDI.into(),
+            1 => Reg::RSI.into(),
+            2 => Reg::RDX.into(),
+            3 => Reg::RCX.into(),
+            4 => Reg::R8.into(),
+            5 => Reg::R9.into(),
+            _ => Operand::Mem(Some(8 * (index + 2) as i64), Some(Reg::RBP), None, None),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -130,6 +142,8 @@ pub enum Instr {
     Label(String),
     Call(String),
     Push(Operand),
+    Pop(Operand),
+    Ret,
     Syscall,
 }
 
@@ -159,6 +173,8 @@ impl ToString for Instr {
             Instr::Label(s) => format!("{}:", s),
             Instr::Call(s) => format!("call {}", s),
             Instr::Push(s) => format!("push {}", s.to_string()),
+            Instr::Pop(s) => format!("pop {}", s.to_string()),
+            Instr::Ret => "ret".to_string(),
 
             Instr::Syscall => "syscall".to_string(),
         }
@@ -196,5 +212,13 @@ impl Instr {
 
     pub fn label<S: Into<String>>(s: S) -> Instr {
         Instr::Label(s.into())
+    }
+
+    pub fn push<T: Into<Operand>>(operand: T) -> Instr {
+        Instr::Push(operand.into())
+    }
+
+    pub fn pop<T: Into<Operand>>(operand: T) -> Instr {
+        Instr::Pop(operand.into())
     }
 }

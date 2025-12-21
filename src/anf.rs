@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    common::{BinOp, ExprRef, FlatTree},
+    common::{Args, BinOp, Env, ExprRef, FlatTree, FnDecl},
     instr::{Instr, Operand, Reg},
 };
 
@@ -13,7 +13,7 @@ pub enum ImmExpr {
 }
 
 impl ImmExpr {
-    fn as_operand(&self, env: &Vec<String>) -> Operand {
+    fn as_operand(&self, env: &Env) -> Operand {
         match self {
             ImmExpr::Num(n) => Operand::Imm(*n),
             ImmExpr::Bool(b) => {
@@ -23,11 +23,11 @@ impl ImmExpr {
                     Operand::Imm(0)
                 }
             }
-            ImmExpr::Var(s) => Operand::local(env.iter().rposition(|x| x == s).unwrap()),
+            ImmExpr::Var(s) => env.lookup(s).unwrap(),
         }
     }
 
-    pub fn to_asm(&self, env: &Vec<String>) -> Instr {
+    pub fn to_asm(&self, env: &Env, args: &Args) -> Instr {
         match self {
             ImmExpr::Num(val) => Instr::mov(*val, Reg::RAX),
             ImmExpr::Bool(b) => {
@@ -35,13 +35,13 @@ impl ImmExpr {
                 Instr::mov(repr, Reg::RAX)
             }
             ImmExpr::Var(var) => Instr::mov(
-                Operand::local(env.iter().rposition(|x| x == var).unwrap()),
+                env.lookup(var).or_else(|| args.lookup(var)).unwrap(),
                 Reg::RAX,
             ),
         }
     }
 
-    pub fn gen_param(&self, param_num: usize, env: &Vec<String>) -> Instr {
+    pub fn gen_param(&self, param_num: usize, env: &Env) -> Instr {
         let loc = self.as_operand(env);
         match param_num {
             0 => Instr::mov(loc, Reg::RDI),
@@ -78,40 +78,81 @@ pub enum AnfExpr {
 #[derive(Debug, PartialEq, Eq)]
 pub struct AnfTree {
     tree: FlatTree<AnfExpr>,
+    functions: Vec<FnDecl>,
     entrypoint: ExprRef,
 }
 
 impl AnfTree {
-    pub fn from(tree: FlatTree<AnfExpr>, entrypoint: ExprRef) -> Self {
-        Self { tree, entrypoint }
-    }
-    fn lookup(&self, var: &String, env: &Vec<(String, i64)>) -> Option<i64> {
-        env.iter().rfind(|(s, _)| s == var).map(|(_, n)| *n)
-    }
-
-    pub fn compile(&self) -> Vec<Instr> {
-        let mut env = Vec::new();
-        self.to_asm(self.entrypoint, &mut env)
+    pub fn from(tree: FlatTree<AnfExpr>, functions: Vec<FnDecl>, entrypoint: ExprRef) -> Self {
+        Self {
+            tree,
+            functions,
+            entrypoint,
+        }
     }
 
-    fn to_asm(&self, expr: ExprRef, mut env: &mut Vec<String>) -> Vec<Instr> {
+    pub fn compile(&self) -> (Vec<Instr>, Vec<Instr>) {
+        let mut env = Env::new();
+
+        (
+            self.to_asm(self.entrypoint, &mut env, &Args::empty()),
+            self.functions
+                .iter()
+                .flat_map(|decl| self.compile_function(decl))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    fn compile_function(&self, decl: &FnDecl) -> Vec<Instr> {
+        let prologue = vec![
+            Instr::Label(decl.name.clone()),
+            Instr::push(Reg::RBP),
+            Instr::mov(Reg::RSP, Reg::RBP),
+            Instr::sub(self.stack_frame_size(decl.body) as i64, Reg::RSP),
+        ];
+
+        let mut env = Env::new();
+        let body = self.to_asm(decl.body, &mut env, &decl.args);
+
+        let epilogue = vec![
+            Instr::mov(Reg::RBP, Reg::RSP),
+            Instr::pop(Reg::RBP),
+            Instr::Ret,
+        ];
+
+        [prologue, body, epilogue].concat()
+    }
+
+    fn stack_frame_size(&self, e: ExprRef) -> usize {
+        match self.tree.get(e).unwrap() {
+            AnfExpr::Bin(_, _, _) | AnfExpr::Imm(_) | AnfExpr::Fn(_, _) => 0,
+            AnfExpr::If(_, body, branch) => {
+                std::cmp::max(self.stack_frame_size(*body), self.stack_frame_size(*branch))
+            }
+            AnfExpr::Neg(e) => self.stack_frame_size(*e),
+            AnfExpr::Let(_, assn, body) => {
+                1 + std::cmp::max(self.stack_frame_size(*assn), self.stack_frame_size(*body))
+            }
+        }
+    }
+
+    fn to_asm(&self, expr: ExprRef, mut env: &mut Env, args: &Args) -> Vec<Instr> {
         match self.tree.get(expr).unwrap() {
-            AnfExpr::Imm(e) => vec![e.to_asm(env)],
+            AnfExpr::Imm(e) => vec![e.to_asm(env, args)],
             AnfExpr::Neg(expr) => {
-                let mut program = self.to_asm(*expr, env);
+                let mut program = self.to_asm(*expr, env, args);
                 program.push(Instr::Neg(Reg::RAX));
                 program
             }
             AnfExpr::Let(var, assn, body) => {
-                let assn_asm = self.to_asm(*assn, env);
+                let assn_asm = self.to_asm(*assn, env, args);
 
-                let pos = env.len();
                 env.push(var.clone());
 
                 let prog = [
                     assn_asm,
-                    vec![Instr::mov(Reg::RAX, Operand::local(pos))],
-                    self.to_asm(*body, &mut env),
+                    vec![Instr::mov(Reg::RAX, env.lookup(var).unwrap())],
+                    self.to_asm(*body, &mut env, args),
                 ]
                 .concat();
 
@@ -124,9 +165,9 @@ impl AnfTree {
 
                 [
                     vec![
-                        rhs.to_asm(env),
+                        rhs.to_asm(env, args),
                         Instr::mov(Reg::RAX, Reg::RCX),
-                        lhs.to_asm(env),
+                        lhs.to_asm(env, args),
                     ],
                     op_instrs,
                 ]
@@ -138,14 +179,14 @@ impl AnfTree {
                 let label_done = format!("done{}", expr.0);
                 [
                     vec![
-                        cond.to_asm(env),
+                        cond.to_asm(env, args),
                         Instr::cmp(0, Reg::AL),
                         Instr::Je(label_false.clone()),
                         Instr::label(label_true),
                     ],
-                    self.to_asm(*body, env),
+                    self.to_asm(*body, env, args),
                     vec![Instr::jmp(label_done.clone()), Instr::label(label_false)],
-                    self.to_asm(*branch, env),
+                    self.to_asm(*branch, env, args),
                     vec![Instr::label(label_done)],
                 ]
                 .concat()
@@ -173,7 +214,13 @@ impl AnfTree {
     }
 
     pub fn print(&self) {
+        for func in &self.functions {
+            println!("{}({:?}):", func.name, func.args);
+            self.print_helper(func.body, 0);
+            println!("\n")
+        }
         self.print_helper(self.entrypoint, 0);
+        println!("");
     }
 
     fn print_helper(&self, expr: ExprRef, depth: usize) {
@@ -184,12 +231,12 @@ impl AnfTree {
                 self.print_helper(*e, depth);
             }
             AnfExpr::Bin(op, lhs, rhs) => {
-                print!("{} {} {}", op, lhs, rhs)
+                print!("{} {} {}", lhs, op, rhs)
             }
             AnfExpr::Let(var, assn, body) => {
                 print!("let {} = ", var);
                 self.print_helper(*assn, depth);
-                println!("in");
+                println!(" in");
                 self.print_helper(*body, depth);
             }
             AnfExpr::If(cond, body, branch) => {
@@ -209,5 +256,64 @@ impl AnfTree {
                 print!(")");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        anf::{AnfExpr, AnfTree, ImmExpr},
+        common::FlatTree,
+    };
+
+    #[test]
+    fn test_stack_frame_size_1() {
+        let mut tree = FlatTree::<AnfExpr>::new();
+        let num = AnfExpr::Imm(ImmExpr::Num(5));
+        let var = AnfExpr::Imm(ImmExpr::Var("x".to_string()));
+        let e1 = tree.add(num);
+        let e2 = tree.add(var);
+        let e3 = tree.add(AnfExpr::Let("x".to_string(), e1, e2));
+
+        let anf = AnfTree::from(tree, Vec::new(), e3);
+
+        assert_eq!(anf.stack_frame_size(e1), 0);
+        assert_eq!(anf.stack_frame_size(e2), 0);
+        assert_eq!(anf.stack_frame_size(e3), 1);
+    }
+
+    #[test]
+    fn test_stack_frame_size_nested() {
+        let mut tree = FlatTree::<AnfExpr>::new();
+        let num = AnfExpr::Imm(ImmExpr::Num(5));
+        let var = AnfExpr::Imm(ImmExpr::Var("x".to_string()));
+        let e1 = tree.add(num);
+        let e2 = tree.add(var);
+        let e3 = tree.add(AnfExpr::Let("x".to_string(), e1, e2));
+        let e4 = tree.add(AnfExpr::Let("y".to_string(), e3, e1));
+
+        let anf = AnfTree::from(tree, Vec::new(), e3);
+
+        assert_eq!(anf.stack_frame_size(e3), 1);
+        assert_eq!(anf.stack_frame_size(e4), 2);
+    }
+
+    #[test]
+    fn test_stack_frame_size_if() {
+        let mut tree = FlatTree::<AnfExpr>::new();
+        let num = AnfExpr::Imm(ImmExpr::Num(5));
+        let var = AnfExpr::Imm(ImmExpr::Var("x".to_string()));
+        let boolean = ImmExpr::Bool(true);
+        let e1 = tree.add(num);
+        let e2 = tree.add(var);
+        let e3 = tree.add(AnfExpr::Let("x".to_string(), e1, e2));
+        let e4 = tree.add(AnfExpr::Let("y".to_string(), e3, e1));
+        let e5 = tree.add(AnfExpr::If(boolean, e3, e4));
+
+        let anf = AnfTree::from(tree, Vec::new(), e3);
+
+        assert_eq!(anf.stack_frame_size(e3), 1);
+        assert_eq!(anf.stack_frame_size(e4), 2);
+        assert_eq!(anf.stack_frame_size(e5), 2);
     }
 }

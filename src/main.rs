@@ -2,7 +2,7 @@ use std::{
     env, fs,
     io::{self, ErrorKind, Read, Write},
     path::Path,
-    process::{Command, Stdio},
+    process::{Command, Stdio, exit},
 };
 
 use lalrpop_util::lalrpop_mod;
@@ -35,8 +35,8 @@ impl CLIArgs {
     }
 }
 
-fn compile<S: Into<String>>(input: S, args: &CLIArgs) -> String {
-    let preamble = ".extern max \n\n\
+fn to_asm<S: Into<String>>(input: S, args: &CLIArgs) -> String {
+    let preamble = ".extern cmax \n\n\
         .text \n\
         .global _start \n\
         \n\
@@ -54,15 +54,15 @@ fn compile<S: Into<String>>(input: S, args: &CLIArgs) -> String {
     let anf = renamed.to_anf();
 
     if args.verbose {
-        // ast.print();
+        println!("ANF:\n--------------------");
         anf.print();
     }
 
-    let compiled = anf.compile();
+    let (entry, decls) = anf.compile();
 
-    let prog = [compiled, envoi].concat();
+    let prog = [entry, envoi, decls].concat();
 
-    format!(
+    let asm = format!(
         "{}\n",
         [
             preamble,
@@ -72,7 +72,14 @@ fn compile<S: Into<String>>(input: S, args: &CLIArgs) -> String {
                 .join("\n")
         ]
         .join("\n")
-    )
+    );
+
+    if args.verbose {
+        println!("Assembly:\n--------------------");
+        println!("{}", asm);
+    }
+
+    return asm;
 }
 
 fn run_assembler(asm: &str, output_path: &str) -> Result<(), String> {
@@ -122,7 +129,11 @@ fn run_linker(object_path: &str) -> Result<(), String> {
             if o.status.success() {
                 Ok(())
             } else {
-                Err(format!("`ld` failed with status {}!", o.status))
+                Err(format!(
+                    "`ld` failed with status {}!\n\n{}",
+                    o.status,
+                    String::from_utf8(o.stderr).unwrap()
+                ))
             }
         }
         Err(e) => {
@@ -145,7 +156,7 @@ fn cleanup(object_path: &str) -> Result<(), String> {
     }
 }
 
-fn main() -> Result<(), String> {
+fn compile() -> Result<(), String> {
     let args = CLIArgs::get();
 
     let mut buffer = String::new();
@@ -153,7 +164,7 @@ fn main() -> Result<(), String> {
         return Err("Failed to read stdin.".to_string());
     }
 
-    let asm = compile(buffer, &args);
+    let asm = to_asm(buffer, &args);
 
     if args.dry_run {
         return Ok(());
@@ -168,5 +179,14 @@ fn main() -> Result<(), String> {
         Err(e)
     } else {
         cleanup(object_path)
+    }
+}
+
+fn main() {
+    if let Err(e) = compile() {
+        eprintln!("{}", e);
+        exit(1);
+    } else {
+        exit(0);
     }
 }
