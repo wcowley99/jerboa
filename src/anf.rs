@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    common::{Args, BinOp, Env, ExprRef, FlatTree, FnDecl},
+    common::{BinOp, Env, ExprRef, FlatTree, FnDecl},
     instr::{Instr, Operand, Reg},
 };
 
@@ -27,17 +27,14 @@ impl ImmExpr {
         }
     }
 
-    pub fn to_asm(&self, env: &Env, args: &Args) -> Instr {
+    pub fn to_asm(&self, env: &Env) -> Operand {
         match self {
-            ImmExpr::Num(val) => Instr::mov(*val, Reg::RAX),
+            ImmExpr::Num(val) => Operand::Imm(*val),
             ImmExpr::Bool(b) => {
                 let repr = if *b { 1 } else { 0 };
-                Instr::mov(repr, Reg::RAX)
+                Operand::Imm(repr)
             }
-            ImmExpr::Var(var) => Instr::mov(
-                env.lookup(var).or_else(|| args.lookup(var)).unwrap(),
-                Reg::RAX,
-            ),
+            ImmExpr::Var(var) => env.lookup(var).unwrap(),
         }
     }
 
@@ -91,28 +88,45 @@ impl AnfTree {
         }
     }
 
-    pub fn compile(&self) -> (Vec<Instr>, Vec<Instr>) {
+    pub fn compile(&self) -> (Vec<Instr>, Vec<Vec<Instr>>) {
         let mut env = Env::new();
 
+        let prologue = vec![
+            Instr::label("_start"),
+            Instr::push(Reg::RBP),
+            Instr::mov(Reg::RSP, Reg::RBP),
+            Instr::sub(8 * self.stack_frame_size(self.entrypoint) as i64, Reg::RSP),
+        ];
+
+        let epilogue = vec![Instr::mov(Reg::RBP, Reg::RSP), Instr::pop(Reg::RBP)];
+
+        let entrypoint = self.to_asm(self.entrypoint, &mut env);
         (
-            self.to_asm(self.entrypoint, &mut env, &Args::empty()),
+            [prologue, entrypoint, epilogue].concat(),
             self.functions
                 .iter()
-                .flat_map(|decl| self.compile_function(decl))
+                .map(|decl| {
+                    let compiled = self.compile_function(decl, &mut env);
+
+                    compiled
+                })
                 .collect::<Vec<_>>(),
         )
     }
 
-    fn compile_function(&self, decl: &FnDecl) -> Vec<Instr> {
+    fn compile_function(&self, decl: &FnDecl, mut env: &mut Env) -> Vec<Instr> {
         let prologue = vec![
             Instr::Label(decl.name.clone()),
             Instr::push(Reg::RBP),
             Instr::mov(Reg::RSP, Reg::RBP),
-            Instr::sub(self.stack_frame_size(decl.body) as i64, Reg::RSP),
+            Instr::sub(8 * self.stack_frame_size(decl.body) as i64, Reg::RSP),
         ];
 
-        let mut env = Env::new();
-        let body = self.to_asm(decl.body, &mut env, &decl.args);
+        env.set_args(&decl.args);
+
+        let body = self.to_asm(decl.body, &mut env);
+
+        env.clear_args();
 
         let epilogue = vec![
             Instr::mov(Reg::RBP, Reg::RSP),
@@ -136,23 +150,23 @@ impl AnfTree {
         }
     }
 
-    fn to_asm(&self, expr: ExprRef, mut env: &mut Env, args: &Args) -> Vec<Instr> {
+    fn to_asm(&self, expr: ExprRef, mut env: &mut Env) -> Vec<Instr> {
         match self.tree.get(expr).unwrap() {
-            AnfExpr::Imm(e) => vec![e.to_asm(env, args)],
+            AnfExpr::Imm(e) => vec![Instr::mov(e.to_asm(env), Reg::RAX)],
             AnfExpr::Neg(expr) => {
-                let mut program = self.to_asm(*expr, env, args);
+                let mut program = self.to_asm(*expr, env);
                 program.push(Instr::Neg(Reg::RAX));
                 program
             }
             AnfExpr::Let(var, assn, body) => {
-                let assn_asm = self.to_asm(*assn, env, args);
+                let assn_asm = self.to_asm(*assn, env);
 
                 env.push(var.clone());
 
                 let prog = [
                     assn_asm,
                     vec![Instr::mov(Reg::RAX, env.lookup(var).unwrap())],
-                    self.to_asm(*body, &mut env, args),
+                    self.to_asm(*body, &mut env),
                 ]
                 .concat();
 
@@ -161,32 +175,26 @@ impl AnfTree {
                 prog
             }
             AnfExpr::Bin(op, lhs, rhs) => {
-                let op_instrs = op.to_asm();
+                let lhs = lhs.to_asm(env);
+                let rhs = rhs.to_asm(env);
+                let op_instrs = op.to_asm(Operand::Reg(Reg::RAX), rhs);
 
-                [
-                    vec![
-                        rhs.to_asm(env, args),
-                        Instr::mov(Reg::RAX, Reg::RCX),
-                        lhs.to_asm(env, args),
-                    ],
-                    op_instrs,
-                ]
-                .concat()
+                [vec![Instr::mov(lhs, Reg::RAX)], op_instrs].concat()
             }
             AnfExpr::If(cond, body, branch) => {
-                let label_true = format!("if_zero{}", expr.0);
-                let label_false = format!("if_nz{}", expr.0);
+                let label_true = format!("if_true{}", expr.0);
+                let label_false = format!("if_false{}", expr.0);
                 let label_done = format!("done{}", expr.0);
                 [
                     vec![
-                        cond.to_asm(env, args),
+                        Instr::mov(cond.to_asm(env), Reg::RAX),
                         Instr::cmp(0, Reg::AL),
                         Instr::Je(label_false.clone()),
                         Instr::label(label_true),
                     ],
-                    self.to_asm(*body, env, args),
+                    self.to_asm(*body, env),
                     vec![Instr::jmp(label_done.clone()), Instr::label(label_false)],
-                    self.to_asm(*branch, env, args),
+                    self.to_asm(*branch, env),
                     vec![Instr::label(label_done)],
                 ]
                 .concat()
@@ -200,13 +208,41 @@ impl AnfTree {
                     vec![]
                 };
 
+                let caller_save_args = [
+                    Reg::RCX,
+                    Reg::RDX,
+                    Reg::RDI,
+                    Reg::RSI,
+                    Reg::R8,
+                    Reg::R9,
+                    Reg::R10,
+                    Reg::R11,
+                ];
+
+                let save = caller_save_args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, x)| Instr::mov(*x, Operand::local(i + env.num_locals())))
+                    .collect::<Vec<_>>();
+
+                let restore = caller_save_args
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .map(|(i, x)| Instr::mov(Operand::local(i + env.num_locals()), *x))
+                    .collect::<Vec<_>>();
+
                 [
+                    save,
+                    vec![Instr::sub(64, Reg::RSP)],
                     args.iter()
                         .enumerate()
                         .map(|(i, arg)| arg.gen_param(i, &env))
                         .collect(),
                     vec![Instr::Call(name.clone())],
+                    vec![Instr::add(64, Reg::RSP)],
                     cleanup_instr,
+                    restore,
                 ]
                 .concat()
             }

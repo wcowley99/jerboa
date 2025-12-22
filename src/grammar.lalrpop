@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::common::{Args, BinOp, FnDecl, ExprRef, FlatTree};
+use crate::common::{BinOp, FnDecl, ExprRef, FlatTree};
 use crate::ast::Expr;
 
 grammar(arena: &mut FlatTree<Expr>);
@@ -13,7 +13,7 @@ Decl: FnDecl = {
         let mut args = args.into_iter().map(|(arg, _)| arg).collect::<Vec<_>>();
         if let Some(a) = a { args.push(a); }
 
-        FnDecl::new(n, Args(args), e)
+        FnDecl::new(n, args, e)
     }
 }
 
@@ -73,5 +73,5 @@ Var: ExprRef = {
 };
 
 Name: String = {
-    r"[a-zA-Z]+" => String::from(<>),
+    r"[a-zA-Z][a-zA-Z0-9]*" => String::from(<>),
 }

@@ -22,12 +22,12 @@ pub enum BinOp {
 }
 
 impl BinOp {
-    pub fn to_asm(&self) -> Vec<Instr> {
-        let cmp = Instr::cmp(Reg::RCX, Reg::RAX);
+    pub fn to_asm(&self, lhs: Operand, rhs: Operand) -> Vec<Instr> {
+        let cmp = Instr::cmp(rhs, lhs);
         match self {
-            BinOp::Add => vec![Instr::add(Reg::RCX, Reg::RAX)],
-            BinOp::Sub => vec![Instr::sub(Reg::RCX, Reg::RAX)],
-            BinOp::Mul => vec![Instr::imul(Reg::RCX, Reg::RAX)],
+            BinOp::Add => vec![Instr::add(rhs, lhs)],
+            BinOp::Sub => vec![Instr::sub(rhs, lhs)],
+            BinOp::Mul => vec![Instr::imul(rhs, lhs)],
             BinOp::Div => todo!("Divide not implemented"),
 
             BinOp::Eq => vec![cmp, Instr::Sete(Reg::AL)],
@@ -61,11 +61,15 @@ impl Display for BinOp {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Env {
     locals: Vec<String>,
+    args: Vec<String>,
 }
 
 impl Env {
     pub fn new() -> Self {
-        Self { locals: Vec::new() }
+        Self {
+            locals: Vec::new(),
+            args: Vec::new(),
+        }
     }
 
     pub fn push(&mut self, local: String) {
@@ -76,50 +80,82 @@ impl Env {
         self.locals.pop();
     }
 
-    fn position(&self, var: &String) -> Option<usize> {
-        self.locals.iter().rposition(|l| l == var)
+    pub fn set_args(&mut self, args: &Vec<String>) {
+        self.args = args.clone();
+    }
+
+    pub fn clear_args(&mut self) {
+        self.args = Vec::new();
     }
 
     pub fn lookup(&self, var: &String) -> Option<Operand> {
-        self.position(var).map(|i| Operand::local(i))
+        let local = self
+            .locals
+            .iter()
+            .rposition(|l| l == var)
+            .map(|i| Operand::local(i));
+        if local.is_some() {
+            local
+        } else {
+            let args = self
+                .args
+                .iter()
+                .position(|a| a == var)
+                .map(|i| Operand::arg(i));
+
+            args
+        }
     }
 
-    pub fn rename(&self, var: &String) -> Option<String> {
-        self.position(var).map(|i| format!("x{}", i))
-    }
-
-    pub fn contains(&self, var: &String) -> bool {
-        self.locals.contains(var)
+    pub fn num_locals(&self) -> usize {
+        self.locals.len()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Args(pub Vec<String>);
+pub struct NameGen {
+    names: Vec<(String, String)>,
+    local_counter: usize,
+    arg_counter: usize,
+}
 
-impl Args {
-    pub fn empty() -> Self {
-        Args(Vec::new())
-    }
-
-    fn position(&self, arg: &String) -> Option<usize> {
-        self.0.iter().position(|a| a == arg)
-    }
-
-    pub fn rename(&self, arg: &String) -> Option<String> {
-        self.position(arg).map(|i| format!("arg{}", i))
-    }
-
-    pub fn rename_all(&self) -> Args {
-        let mut args = Vec::new();
-        for i in 0..self.0.len() {
-            args.push(format!("arg{}", i));
+impl NameGen {
+    pub fn new() -> Self {
+        Self {
+            names: Vec::new(),
+            local_counter: 0,
+            arg_counter: 0,
         }
-
-        Args(args)
     }
 
-    pub fn lookup(&self, arg: &String) -> Option<Operand> {
-        self.position(arg).map(|i| Operand::arg(i))
+    pub fn push_arg(&mut self, name: &String) -> String {
+        let new_name = format!("arg{}", self.arg_counter);
+        self.arg_counter += 1;
+
+        self.names.push((name.clone(), new_name.clone()));
+
+        new_name
+    }
+
+    pub fn push_local(&mut self, name: &String) -> String {
+        let new_name = format!("x{}", self.local_counter);
+        self.local_counter += 1;
+
+        self.names.push((name.clone(), new_name.clone()));
+
+        new_name
+    }
+
+    pub fn lookup(&self, name: &String) -> String {
+        self.names
+            .iter()
+            .rfind(|(old, _)| old == name)
+            .map(|(_, new)| new.clone())
+            .unwrap()
+    }
+
+    pub fn pop(&mut self) {
+        self.names.pop();
     }
 }
 
@@ -129,12 +165,12 @@ pub struct ExprRef(pub usize);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnDecl {
     pub name: String,
-    pub args: Args,
+    pub args: Vec<String>,
     pub body: ExprRef,
 }
 
 impl FnDecl {
-    pub fn new(name: String, args: Args, body: ExprRef) -> Self {
+    pub fn new(name: String, args: Vec<String>, body: ExprRef) -> Self {
         Self { name, args, body }
     }
 }

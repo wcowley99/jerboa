@@ -1,0 +1,13 @@
+name = "test function with stack args"
+
+[input]
+program = """
+fn sum8(a, b, c, d, e, f, g, h) {
+  a + b + c + d + e + f + g + h
+}
+
+sum8(1, 2, 3, 4, 5, 6, 7, 8)
+"""
+
+[expected]
+exit_code = 36

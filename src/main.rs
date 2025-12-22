@@ -38,9 +38,7 @@ impl CLIArgs {
 fn to_asm<S: Into<String>>(input: S, args: &CLIArgs) -> String {
     let preamble = ".extern cmax \n\n\
         .text \n\
-        .global _start \n\
-        \n\
-        _start:"
+        .global _start"
         .to_string();
 
     let envoi = vec![
@@ -54,28 +52,40 @@ fn to_asm<S: Into<String>>(input: S, args: &CLIArgs) -> String {
     let anf = renamed.to_anf();
 
     if args.verbose {
-        println!("ANF:\n--------------------");
+        println!("--------------------\nANF:\n--------------------");
         anf.print();
     }
 
     let (entry, decls) = anf.compile();
 
-    let prog = [entry, envoi, decls].concat();
+    let decls = decls
+        .iter()
+        .map(|decl| {
+            decl.iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join("\n  ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let prog = [entry, envoi].concat();
 
     let asm = format!(
         "{}\n",
         [
             preamble,
             prog.iter()
-                .map(|n| n.to_string())
+                .map(|n| format!("{}", n.to_string()))
                 .collect::<Vec<_>>()
-                .join("\n")
+                .join("\n  "),
+            decls,
         ]
-        .join("\n")
+        .join("\n\n")
     );
 
     if args.verbose {
-        println!("Assembly:\n--------------------");
+        println!("--------------------\nAssembly:\n--------------------");
         println!("{}", asm);
     }
 

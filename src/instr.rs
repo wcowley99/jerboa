@@ -100,7 +100,7 @@ impl ToString for Operand {
 
 impl Operand {
     pub fn local(index: usize) -> Operand {
-        Operand::Mem(Some(-8 * (index + 1) as i64), Some(Reg::RSP), None, None)
+        Operand::Mem(Some(-8 * (index + 1) as i64), Some(Reg::RBP), None, None)
     }
 
     pub fn arg(index: usize) -> Operand {
@@ -111,7 +111,7 @@ impl Operand {
             3 => Reg::RCX.into(),
             4 => Reg::R8.into(),
             5 => Reg::R9.into(),
-            _ => Operand::Mem(Some(8 * (index + 2) as i64), Some(Reg::RBP), None, None),
+            _ => Operand::Mem(Some(8 * (index - 4) as i64), Some(Reg::RBP), None, None),
         }
     }
 }
