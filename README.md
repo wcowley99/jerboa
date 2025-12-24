@@ -2,7 +2,7 @@
 
 Jerboa is a custom compiler for the `Jerb` programming language. It targets Linux x86_64 systems, and compiles `.jerb` files (or any file extension, really) into an executable file format.
 
-This project is primarily built for learning and experimentation with compiler design, including semantic analysis, optimization, stack & heap management, and intermediate forms.
+This project is primarily built for learning and experimentation with compiler design, including semantic analysis, optimization, stack & heap management, and intermediate forms. That said, this project aims to be designed in a practical way such that it can be used in real-world projects.
 
 ---
 
@@ -12,6 +12,7 @@ This project is primarily built for learning and experimentation with compiler d
 - [x] Assembly-code generation
 - [x] C foreign-function interface
 - [x] Command-line interface
+- [x] Helpful error messages
 
 ---
 

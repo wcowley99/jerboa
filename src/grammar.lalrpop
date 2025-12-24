@@ -41,7 +41,7 @@ Expr: ExprRef = {
 Term: ExprRef = {
     "(" <Expr> ")",
     "let" <id: Name> "=" <assn: Expr> "in" "{" <body: Expr> "}" => arena.add(Expr::Let(id, assn, body)),
-    "if" <cond: Expr> "then" "{" <body: Expr> "}" "else" "{" <branch: Expr> "}" => arena.add(Expr::If(cond, body, branch)),
+    "if" <cond: Expr> "{" <body: Expr> "}" "else" "{" <branch: Expr> "}" => arena.add(Expr::If(cond, body, branch)),
     "-" <t: Term> => arena.add(Expr::Neg(t)),
     <f: Name> "(" <args: (Expr ",")*> <e: Expr?> ")" => {
         let mut args = args.into_iter().map(|(e, _)| e).collect::<Vec<_>>();

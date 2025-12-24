@@ -1,8 +1,9 @@
-use lalrpop_util::lalrpop_mod;
+use lalrpop_util::{ParseError, lalrpop_mod, lexer::Token};
 
 use crate::{
     anf::{AnfExpr, AnfTree, ImmExpr},
     common::{BinOp, Env, ExprRef, FlatTree, FnDecl, NameGen},
+    error::format_error,
 };
 lalrpop_mod!(pub grammar);
 
@@ -35,15 +36,51 @@ pub struct AST {
 
 impl AST {
     /// Parses source code into an Abstract Syntax Tree
-    pub fn from(input: &str) -> Self {
+    pub fn from<'a>(input: &'a str) -> Result<Self, String> {
         let mut tree = FlatTree::<Expr>::new();
         let parser = grammar::ProgramParser::new();
-        let (functions, entrypoint) = parser.parse(&mut tree, input).unwrap();
+        let result = parser.parse(&mut tree, input);
 
-        Self {
-            tree,
-            functions,
-            entrypoint,
+        match result {
+            Err(ParseError::InvalidToken { location }) => {
+                let err = format_error(input, location, None, "Invalid Token", None);
+
+                Err(err)
+            }
+            Err(ParseError::UnrecognizedEof { location, expected }) => {
+                let err = format_error(
+                    input,
+                    location,
+                    None,
+                    &format!("Unexpected end of file, expected one of {:?}", expected),
+                    None,
+                );
+
+                Err(err)
+            }
+            Err(ParseError::UnrecognizedToken { token, expected }) => {
+                let (begin, tok, end) = token;
+
+                let err = format_error(
+                    input,
+                    begin,
+                    Some(end),
+                    &format!(
+                        "Unexpected token: '{}', expected one of {:?}",
+                        tok.1, expected
+                    ),
+                    None,
+                );
+
+                Err(err)
+            }
+            Err(ParseError::ExtraToken { token }) => todo!(),
+            Err(ParseError::User { error }) => Err(error.to_string()),
+            Ok((fns, entry)) => Ok(Self {
+                tree,
+                functions: fns,
+                entrypoint: entry,
+            }),
         }
     }
 

@@ -1,7 +1,6 @@
 use std::{
     env, fs,
     io::{self, ErrorKind, Read, Write},
-    path::Path,
     process::{Command, Stdio, exit},
 };
 
@@ -17,6 +16,7 @@ use crate::{
 mod anf;
 mod ast;
 mod common;
+mod error;
 mod instr;
 
 struct CLIArgs {
@@ -35,7 +35,7 @@ impl CLIArgs {
     }
 }
 
-fn to_asm<S: Into<String>>(input: S, args: &CLIArgs) -> String {
+fn to_asm<S: Into<String>>(input: S, args: &CLIArgs) -> Result<String, String> {
     let preamble = ".extern cmax \n\n\
         .text \n\
         .global _start"
@@ -47,7 +47,7 @@ fn to_asm<S: Into<String>>(input: S, args: &CLIArgs) -> String {
         Instr::Syscall,
     ];
 
-    let ast = AST::from(&input.into());
+    let ast = AST::from(&input.into())?;
     let renamed = ast.rename().unwrap();
     let anf = renamed.to_anf();
 
@@ -89,7 +89,7 @@ fn to_asm<S: Into<String>>(input: S, args: &CLIArgs) -> String {
         println!("{}", asm);
     }
 
-    return asm;
+    return Ok(asm);
 }
 
 fn run_assembler(asm: &str, output_path: &str) -> Result<(), String> {
@@ -174,7 +174,7 @@ fn compile() -> Result<(), String> {
         return Err("Failed to read stdin.".to_string());
     }
 
-    let asm = to_asm(buffer, &args);
+    let asm = to_asm(buffer, &args)?;
 
     if args.dry_run {
         return Ok(());

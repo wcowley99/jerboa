@@ -10,4 +10,5 @@ lalrpop = "0.22.2"
 ntest = "0.9.3"
 lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
 cc = "1.2.50"
+colored = "3.0.0"
 
