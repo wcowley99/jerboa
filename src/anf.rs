@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    common::{BinOp, Env, ExprRef, FlatTree, FnDecl},
+    common::{BinOp, Env, ExprRef, FlatTree, FnDecl, Type},
     instr::{Instr, Operand, Reg},
 };
 
@@ -23,7 +23,7 @@ impl ImmExpr {
                     Operand::Imm(0)
                 }
             }
-            ImmExpr::Var(s) => env.lookup(s).unwrap(),
+            ImmExpr::Var(s) => env.into_operand(s).unwrap(),
         }
     }
 
@@ -34,7 +34,7 @@ impl ImmExpr {
                 let repr = if *b { 1 } else { 0 };
                 Operand::Imm(repr)
             }
-            ImmExpr::Var(var) => env.lookup(var).unwrap(),
+            ImmExpr::Var(var) => env.into_operand(var).unwrap(),
         }
     }
 
@@ -161,11 +161,11 @@ impl AnfTree {
             AnfExpr::Let(var, assn, body) => {
                 let assn_asm = self.to_asm(*assn, env);
 
-                env.push(var.clone());
+                env.push(var.clone(), Type::Any);
 
                 let prog = [
                     assn_asm,
-                    vec![Instr::mov(Reg::RAX, env.lookup(var).unwrap())],
+                    vec![Instr::mov(Reg::RAX, env.into_operand(var).unwrap())],
                     self.to_asm(*body, &mut env),
                 ]
                 .concat();

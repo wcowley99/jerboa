@@ -35,7 +35,7 @@ impl CLIArgs {
     }
 }
 
-fn to_asm<S: Into<String>>(input: S, args: &CLIArgs) -> Result<String, String> {
+fn to_asm(input: &str, args: &CLIArgs) -> Result<String, String> {
     let preamble = ".extern cmax \n\n\
         .text \n\
         .global _start"
@@ -47,7 +47,17 @@ fn to_asm<S: Into<String>>(input: S, args: &CLIArgs) -> Result<String, String> {
         Instr::Syscall,
     ];
 
-    let ast = AST::from(&input.into())?;
+    let ast = AST::from(input)?;
+
+    // ast.scope_check()?;
+    if let Err(e) = ast.type_check(input) {
+        return Err(e
+            .iter()
+            .map(|e| e.to_string(input))
+            .collect::<Vec<_>>()
+            .join("\n\n"));
+    }
+
     let renamed = ast.rename().unwrap();
     let anf = renamed.to_anf();
 
@@ -174,7 +184,7 @@ fn compile() -> Result<(), String> {
         return Err("Failed to read stdin.".to_string());
     }
 
-    let asm = to_asm(buffer, &args)?;
+    let asm = to_asm(&buffer, &args)?;
 
     if args.dry_run {
         return Ok(());

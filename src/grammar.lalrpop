@@ -1,19 +1,19 @@
 use std::str::FromStr;
-use crate::common::{BinOp, FnDecl, ExprRef, FlatTree};
+use crate::common::{BinOp, FnDecl, ExprRef, FlatTree, Tag, Type};
 use crate::ast::Expr;
 
-grammar(arena: &mut FlatTree<Expr>);
+grammar(arena: &mut FlatTree<(Tag, Expr)>);
 
 pub Program: (Vec<FnDecl>, ExprRef) = {
     <fns: Decl*> <e: Expr> => (fns, e),
 }
 
 Decl: FnDecl = {
-    "fn" <n: Name> "(" <args: (Name ",")*> <a: Name?> ")" "{" <e: Expr> "}" => {
-        let mut args = args.into_iter().map(|(arg, _)| arg).collect::<Vec<_>>();
-        if let Some(a) = a { args.push(a); }
+    <start: @L> "fn" <n: Name> <end: @R> "(" <args: (Name ":" Type ",")*> <a: (Name ":" Type)?> ")" "->" <t: Type> "{" <e: Expr> "}" => {
+        let mut args = args.into_iter().map(|(arg, _, typ, _)| (arg, typ)).collect::<Vec<_>>();
+        if let Some(a) = a.map(|(arg, _, typ)| (arg, typ)) { args.push(a); }
 
-        FnDecl::new(n, args, e)
+        FnDecl::new(n, args, e, t, Tag::new(start, end))
     }
 }
 
@@ -22,39 +22,39 @@ Expr: ExprRef = {
     Term,
 
     #[precedence(level="1")] #[assoc(side="left")]
-    <l:Expr> "*" <r:Expr> => arena.add(Expr::Bin(BinOp::Mul, l, r)),
-    <l:Expr> "/" <r:Expr> => arena.add(Expr::Bin(BinOp::Div, l, r)),
+    <start: @L> <l:Expr> "*" <r:Expr> <end: @R> => arena.add((Tag::new(start, end), Expr::Bin(BinOp::Mul, l, r))),
+    <start: @L> <l:Expr> "/" <r:Expr> <end: @R> => arena.add((Tag::new(start, end), Expr::Bin(BinOp::Div, l, r))),
 
     #[precedence(level="2")] #[assoc(side="left")]
-    <l:Expr> "+" <r:Expr> => arena.add(Expr::Bin(BinOp::Add, l, r)),
-    <l:Expr> "-" <r:Expr> => arena.add(Expr::Bin(BinOp::Sub, l, r)),
+    <start: @L> <l:Expr> "+" <r:Expr> <end: @R> => arena.add((Tag::new(start, end), Expr::Bin(BinOp::Add, l, r))),
+    <start: @L> <l:Expr> "-" <r:Expr> <end: @R> => arena.add((Tag::new(start, end), Expr::Bin(BinOp::Sub, l, r))),
 
     #[precedence(level="3")] #[assoc(side="left")]
-    <l: Expr> "==" <r: Expr> => arena.add(Expr::Bin(BinOp::Eq, l, r)),
-    <l: Expr> "!=" <r: Expr> => arena.add(Expr::Bin(BinOp::Neq, l, r)),
-    <l: Expr> "<=" <r: Expr> => arena.add(Expr::Bin(BinOp::Leq, l, r)),
-    <l: Expr> ">=" <r: Expr> => arena.add(Expr::Bin(BinOp::Geq, l, r)),
-    <l: Expr> "<" <r: Expr> => arena.add(Expr::Bin(BinOp::Lt, l, r)),
-    <l: Expr> ">" <r: Expr> => arena.add(Expr::Bin(BinOp::Gt, l, r)),
+    <start: @L> <l: Expr> "==" <r: Expr> <end: @R> => arena.add((Tag::new(start, end), Expr::Bin(BinOp::Eq, l, r))),
+    <start: @L> <l: Expr> "!=" <r: Expr> <end: @R> => arena.add((Tag::new(start, end), Expr::Bin(BinOp::Neq, l, r))),
+    <start: @L> <l: Expr> "<=" <r: Expr> <end: @R> => arena.add((Tag::new(start, end), Expr::Bin(BinOp::Leq, l, r))),
+    <start: @L> <l: Expr> ">=" <r: Expr> <end: @R> => arena.add((Tag::new(start, end), Expr::Bin(BinOp::Geq, l, r))),
+    <start: @L> <l: Expr> "<" <r: Expr> <end: @R> => arena.add((Tag::new(start, end), Expr::Bin(BinOp::Lt, l, r))),
+    <start: @L> <l: Expr> ">" <r: Expr> <end: @R> => arena.add((Tag::new(start, end), Expr::Bin(BinOp::Gt, l, r))),
 };
 
 Term: ExprRef = {
     "(" <Expr> ")",
-    "let" <id: Name> "=" <assn: Expr> "in" "{" <body: Expr> "}" => arena.add(Expr::Let(id, assn, body)),
-    "if" <cond: Expr> "{" <body: Expr> "}" "else" "{" <branch: Expr> "}" => arena.add(Expr::If(cond, body, branch)),
-    "-" <t: Term> => arena.add(Expr::Neg(t)),
-    <f: Name> "(" <args: (Expr ",")*> <e: Expr?> ")" => {
+    <start: @L> "let" <id: Name> "=" <assn: Expr> "in" "{" <body: Expr> "}" <end: @R> => arena.add((Tag::new(start, end), Expr::Let(id, assn, body))),
+    <start: @L> "if" <end: @R> <cond: Expr> "{" <body: Expr> "}" "else" "{" <branch: Expr> "}" => arena.add((Tag::new(start, end), Expr::If(cond, body, branch))),
+    <start: @L> "-" <end: @R> <t: Term> => arena.add((Tag::new(start, end), Expr::Neg(t))),
+    <start: @L> <f: Name> "(" <args: (Expr ",")*> <e: Expr?> ")" <end: @R> => {
         let mut args = args.into_iter().map(|(e, _)| e).collect::<Vec<_>>();
         if let Some(e) = e { args.push(e); }
 
-        arena.add(Expr::FnCall(f, args))
+        arena.add((Tag::new(start, end), Expr::FnCall(f, args)))
     },
 
     Imm,
 };
 
 Num: ExprRef = {
-    r"[0-9]+" => arena.add(Expr::Num(i64::from_str(<>).unwrap())),
+    <start: @L> <n: r"[0-9]+"> <end: @R> => arena.add((Tag::new(start, end), Expr::Num(i64::from_str(n).unwrap()))),
 };
 
 Imm: ExprRef = {
@@ -64,14 +64,19 @@ Imm: ExprRef = {
 }
 
 Bool: ExprRef = {
-    "true" => arena.add(Expr::Bool(true)),
-    "false" => arena.add(Expr::Bool(false)),
+    <start: @L> "true" <end: @R> => arena.add((Tag::new(start, end), Expr::Bool(true))),
+    <start: @L> "false" <end: @R> => arena.add((Tag::new(start, end), Expr::Bool(false))),
 };
 
 Var: ExprRef = {
-    Name => arena.add(Expr::Var(<>)),
+    <start: @L> <n: Name> <end: @R> => arena.add((Tag::new(start, end), Expr::Var(n))),
 };
 
 Name: String = {
     r"[a-zA-Z][a-zA-Z0-9]*" => String::from(<>),
+}
+
+Type: Type = {
+    "i64" => Type::I64,
+    "bool" => Type::Bool,
 }
