@@ -46,6 +46,65 @@ impl ToString for Reg {
     }
 }
 
+pub struct Program {
+    externs: Vec<String>,
+    fns: Vec<Vec<Instr>>,
+    entry: Vec<Instr>,
+}
+
+impl Program {
+    pub fn new(externs: Vec<String>, fns: Vec<Vec<Instr>>, entry: Vec<Instr>) -> Self {
+        Self {
+            externs,
+            fns,
+            entry,
+        }
+    }
+
+    pub fn into_string(self) -> String {
+        let envoi = vec![
+            Instr::mov(Reg::RAX, Reg::RDI),
+            Instr::mov(60, Reg::RAX),
+            Instr::Syscall,
+        ];
+
+        let preamble = [
+            self.externs
+                .iter()
+                .map(|n| Instr::Extern(n.clone()).to_string())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            vec![Instr::Text, Instr::global("_start")]
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ]
+        .join("\n\n");
+
+        let fns = self
+            .fns
+            .iter()
+            .map(|decl| {
+                decl.iter()
+                    .map(|i| i.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n  ")
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        let main = [self.entry, envoi]
+            .concat()
+            .iter()
+            .map(|n| format!("{}", n.to_string()))
+            .collect::<Vec<_>>()
+            .join("\n  ");
+
+        format!("{}\n", [preamble, fns, main].join("\n\n"))
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum Operand {
     Imm(i64),
@@ -117,6 +176,12 @@ impl Operand {
 }
 
 #[derive(Debug, Clone)]
+pub enum FnImpl {
+    Extern(String),
+    Impl(Vec<Instr>),
+}
+
+#[derive(Debug, Clone)]
 pub enum Instr {
     Mov(Operand, Operand),
 
@@ -144,6 +209,12 @@ pub enum Instr {
     Push(Operand),
     Pop(Operand),
     Ret,
+
+    Extern(String),
+    Global(String),
+
+    Text,
+
     Syscall,
 }
 
@@ -175,6 +246,11 @@ impl ToString for Instr {
             Instr::Push(s) => format!("push {}", s.to_string()),
             Instr::Pop(s) => format!("pop {}", s.to_string()),
             Instr::Ret => "ret".to_string(),
+
+            Instr::Extern(s) => format!(".extern {}", s),
+            Instr::Global(s) => format!(".global {}", s),
+
+            Instr::Text => ".text".to_string(),
 
             Instr::Syscall => "syscall".to_string(),
         }
@@ -220,5 +296,9 @@ impl Instr {
 
     pub fn pop<T: Into<Operand>>(operand: T) -> Instr {
         Instr::Pop(operand.into())
+    }
+
+    pub fn global<S: Into<String>>(s: S) -> Instr {
+        Instr::Global(s.into())
     }
 }

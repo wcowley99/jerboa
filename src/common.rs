@@ -260,7 +260,7 @@ impl Display for Type {
 pub struct FnDecl {
     pub name: String,
     pub args: Vec<(String, Type)>,
-    pub body: ExprRef,
+    pub body: Option<ExprRef>,
     pub ret: Type,
     pub tag: Tag,
 }
@@ -269,7 +269,7 @@ impl FnDecl {
     pub fn new(
         name: String,
         args: Vec<(String, Type)>,
-        body: ExprRef,
+        body: Option<ExprRef>,
         ret: Type,
         tag: Tag,
     ) -> Self {

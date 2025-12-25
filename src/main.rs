@@ -36,17 +36,6 @@ impl CLIArgs {
 }
 
 fn to_asm(input: &str, args: &CLIArgs) -> Result<String, String> {
-    let preamble = ".extern cmax \n\n\
-        .text \n\
-        .global _start"
-        .to_string();
-
-    let envoi = vec![
-        Instr::mov(Reg::RAX, Reg::RDI),
-        Instr::mov(60, Reg::RAX),
-        Instr::Syscall,
-    ];
-
     let ast = AST::from(input)?;
 
     // ast.scope_check()?;
@@ -66,33 +55,8 @@ fn to_asm(input: &str, args: &CLIArgs) -> Result<String, String> {
         anf.print();
     }
 
-    let (entry, decls) = anf.compile();
-
-    let decls = decls
-        .iter()
-        .map(|decl| {
-            decl.iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<_>>()
-                .join("\n  ")
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    let prog = [entry, envoi].concat();
-
-    let asm = format!(
-        "{}\n",
-        [
-            preamble,
-            prog.iter()
-                .map(|n| format!("{}", n.to_string()))
-                .collect::<Vec<_>>()
-                .join("\n  "),
-            decls,
-        ]
-        .join("\n\n")
-    );
+    let prog = anf.compile();
+    let asm = prog.into_string();
 
     if args.verbose {
         println!("--------------------\nAssembly:\n--------------------");

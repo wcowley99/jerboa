@@ -2,6 +2,8 @@ name = "invoke functions from dynamic library"
 
 [input]
 program = """
+fn cmax(a: i64, b: i64) -> i64
+
 cmax(cmax(5+5, 20), let x = 15 in {x + x})
 """
 

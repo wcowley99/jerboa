@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     common::{BinOp, Env, ExprRef, FlatTree, FnDecl, Type},
-    instr::{Instr, Operand, Reg},
+    instr::{FnImpl, Instr, Operand, Program, Reg},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,7 +88,7 @@ impl AnfTree {
         }
     }
 
-    pub fn compile(&self) -> (Vec<Instr>, Vec<Vec<Instr>>) {
+    pub fn compile(&self) -> Program {
         let mut env = Env::new();
 
         let prologue = vec![
@@ -100,41 +100,62 @@ impl AnfTree {
 
         let epilogue = vec![Instr::mov(Reg::RBP, Reg::RSP), Instr::pop(Reg::RBP)];
 
-        let entrypoint = self.to_asm(self.entrypoint, &mut env);
-        (
-            [prologue, entrypoint, epilogue].concat(),
-            self.functions
-                .iter()
-                .map(|decl| {
-                    let compiled = self.compile_function(decl, &mut env);
+        let fns = self
+            .functions
+            .iter()
+            .map(|decl| {
+                let compiled = self.compile_function(decl, &mut env);
+                compiled
+            })
+            .collect::<Vec<_>>();
 
-                    compiled
-                })
-                .collect::<Vec<_>>(),
-        )
+        let externs = fns
+            .iter()
+            .filter_map(|f| match f {
+                FnImpl::Extern(s) => Some(s.clone()),
+                FnImpl::Impl(_) => None,
+            })
+            .collect();
+
+        let fns = fns
+            .into_iter()
+            .filter_map(|f| match f {
+                FnImpl::Extern(_) => None,
+                FnImpl::Impl(x) => Some(x),
+            })
+            .collect();
+
+        let entrypoint = self.to_asm(self.entrypoint, &mut env);
+        let entrypoint = [prologue, entrypoint, epilogue].concat();
+
+        Program::new(externs, fns, entrypoint)
     }
 
-    fn compile_function(&self, decl: &FnDecl, mut env: &mut Env) -> Vec<Instr> {
-        let prologue = vec![
-            Instr::Label(decl.name.clone()),
-            Instr::push(Reg::RBP),
-            Instr::mov(Reg::RSP, Reg::RBP),
-            Instr::sub(8 * self.stack_frame_size(decl.body) as i64, Reg::RSP),
-        ];
+    fn compile_function(&self, decl: &FnDecl, mut env: &mut Env) -> FnImpl {
+        if let Some(e) = decl.body {
+            let prologue = vec![
+                Instr::Label(decl.name.clone()),
+                Instr::push(Reg::RBP),
+                Instr::mov(Reg::RSP, Reg::RBP),
+                Instr::sub(8 * self.stack_frame_size(e) as i64, Reg::RSP),
+            ];
 
-        env.set_args(&decl.args);
+            env.set_args(&decl.args);
 
-        let body = self.to_asm(decl.body, &mut env);
+            let body = self.to_asm(e, &mut env);
 
-        env.clear_args();
+            env.clear_args();
 
-        let epilogue = vec![
-            Instr::mov(Reg::RBP, Reg::RSP),
-            Instr::pop(Reg::RBP),
-            Instr::Ret,
-        ];
+            let epilogue = vec![
+                Instr::mov(Reg::RBP, Reg::RSP),
+                Instr::pop(Reg::RBP),
+                Instr::Ret,
+            ];
 
-        [prologue, body, epilogue].concat()
+            FnImpl::Impl([prologue, body, epilogue].concat())
+        } else {
+            FnImpl::Extern(decl.name.clone())
+        }
     }
 
     fn stack_frame_size(&self, e: ExprRef) -> usize {
@@ -251,8 +272,10 @@ impl AnfTree {
 
     pub fn print(&self) {
         for func in &self.functions {
-            println!("{}({:?}):", func.name, func.args);
-            self.print_helper(func.body, 0);
+            println!("fn {}({:?}):", func.name, func.args);
+            if let Some(e) = func.body {
+                self.print_helper(e, 0);
+            }
             println!("\n")
         }
         self.print_helper(self.entrypoint, 0);

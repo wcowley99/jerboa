@@ -107,28 +107,32 @@ impl AST {
         let functions = self
             .functions
             .iter()
-            .map(|f| {
-                env.set_args(&f.args);
+            .filter_map(|f| {
+                if let Some(e) = f.body {
+                    env.set_args(&f.args);
 
-                let result = match self.type_check_expr(f.body, &mut env, source) {
-                    Ok(t) => {
-                        if t == f.ret {
-                            Ok(())
-                        } else {
-                            Err(vec![TypeError::IncorrectReturnType(
-                                f.name.clone(),
-                                f.ret,
-                                t,
-                                f.tag,
-                            )])
+                    let result = match self.type_check_expr(e, &mut env, source) {
+                        Ok(t) => {
+                            if t == f.ret {
+                                Ok(())
+                            } else {
+                                Err(vec![TypeError::IncorrectReturnType(
+                                    f.name.clone(),
+                                    f.ret,
+                                    t,
+                                    f.tag,
+                                )])
+                            }
                         }
-                    }
-                    Err(e) => Err(e),
-                };
+                        Err(e) => Err(e),
+                    };
 
-                env.clear_args();
+                    env.clear_args();
 
-                result
+                    Some(result)
+                } else {
+                    None
+                }
             })
             .reduce(|r1, r2| merge_errors(r1, r2));
 
@@ -253,14 +257,18 @@ impl AST {
             .functions
             .iter()
             .map(|decl| {
-                let mut env = Env::new();
-                FnDecl::new(
-                    decl.name.clone(),
-                    decl.args.clone(),
-                    self.anf_c(decl.body, &mut tree, &mut env),
-                    decl.ret,
-                    decl.tag,
-                )
+                if let Some(e) = decl.body {
+                    let mut env = Env::new();
+                    FnDecl::new(
+                        decl.name.clone(),
+                        decl.args.clone(),
+                        Some(self.anf_c(e, &mut tree, &mut env)),
+                        decl.ret,
+                        decl.tag,
+                    )
+                } else {
+                    decl.clone()
+                }
             })
             .collect::<Vec<_>>();
 
@@ -380,14 +388,13 @@ impl AST {
                     new_args.push((name_gen.push_arg(arg), *typ));
                 }
 
-                let new_decl = FnDecl::new(
-                    decl.name.clone(),
-                    new_args,
-                    self.rename_expr(&mut renamed, decl.body, &mut name_gen)
-                        .unwrap(),
-                    decl.ret,
-                    decl.tag,
-                );
+                let body = if let Some(e) = decl.body {
+                    Some(self.rename_expr(&mut renamed, e, &mut name_gen).unwrap())
+                } else {
+                    None
+                };
+
+                let new_decl = FnDecl::new(decl.name.clone(), new_args, body, decl.ret, decl.tag);
 
                 for _ in &decl.args {
                     name_gen.pop();

@@ -13,7 +13,14 @@ Decl: FnDecl = {
         let mut args = args.into_iter().map(|(arg, _, typ, _)| (arg, typ)).collect::<Vec<_>>();
         if let Some(a) = a.map(|(arg, _, typ)| (arg, typ)) { args.push(a); }
 
-        FnDecl::new(n, args, e, t, Tag::new(start, end))
+        FnDecl::new(n, args, Some(e), t, Tag::new(start, end))
+    },
+
+    <start: @L> "fn" <n: Name> <end: @R> "(" <args: (Name ":" Type ",")*> <a: (Name ":" Type)?> ")" "->" <t: Type> => {
+        let mut args = args.into_iter().map(|(arg, _, typ, _)| (arg, typ)).collect::<Vec<_>>();
+        if let Some(a) = a.map(|(arg, _, typ)| (arg, typ)) { args.push(a); }
+
+        FnDecl::new(n, args, None, t, Tag::new(start, end))
     }
 }
 
